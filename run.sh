@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# 台灣股票投資助手 - 啟動腳本 (Linux/macOS)
+# 用法:
+#   ./run.sh              # 互動模式
+#   ./run.sh "查台積電股價"  # 單次查詢
+
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+export HERMES_HOME="$PROJECT_ROOT/.hermes"
+cd "$PROJECT_ROOT"
+
+# 確認 hermes 存在
+HERMES_EXE=""
+if command -v hermes &>/dev/null; then
+    HERMES_EXE="hermes"
+elif [ -x "$HOME/.local/bin/hermes" ]; then
+    HERMES_EXE="$HOME/.local/bin/hermes"
+elif [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ]; then
+    HERMES_EXE="$HOME/.hermes/hermes-agent/venv/bin/hermes"
+else
+    echo "hermes 未安裝，請先執行: ./setup.sh"
+    exit 1
+fi
+
+# 確認 .env 存在
+if [ ! -f "$HERMES_HOME/.env" ]; then
+    echo "API key 未設定，請先執行: ./setup.sh"
+    exit 1
+fi
+
+if [ -n "$1" ]; then
+    # 單次查詢模式
+    "$HERMES_EXE" chat -q "$1" -t "terminal,skills" -Q
+else
+    # 互動模式
+    "$HERMES_EXE"
+fi

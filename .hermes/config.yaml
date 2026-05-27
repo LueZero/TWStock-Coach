@@ -1,0 +1,33 @@
+model:
+  default: gpt-4.1
+  provider: copilot
+  base_url: https://api.githubcopilot.com
+  api_mode: chat_completions
+terminal:
+  backend: local
+  cwd: .
+  timeout: 180
+  persistent_shell: true
+agent:
+  max_turns: 60
+  reasoning_effort: medium
+compression:
+  enabled: true
+  threshold: 0.5
+  target_ratio: 0.2
+  protect_last_n: 20
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  memory_char_limit: 2200
+  user_char_limit: 1375
+  nudge_interval: 10
+skills:
+  creation_nudge_interval: 15
+display:
+  compact: false
+  tool_progress: all
+  streaming: true
+onboarding:
+  seen:
+    tool_progress_prompt: true

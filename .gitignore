@@ -1,0 +1,45 @@
+# --- Hermes 執行期產生的檔案（敏感/臨時，不該入版控）---
+.hermes/.env
+.hermes/auth.json
+.hermes/auth.lock
+.hermes/.hermes_history
+.hermes/.update_check
+.hermes/.skills_prompt_snapshot.json
+.hermes/cache/
+.hermes/sessions/
+.hermes/logs/
+.hermes/memories/
+.hermes/cron/
+.hermes/skills/
+.hermes/SOUL.md
+.hermes/models_dev_cache.json
+.hermes/ollama_cloud_models_cache.json
+.hermes/state.db
+.hermes/state.db-shm
+.hermes/state.db-wal
+
+# --- 資料/快取 ---
+data/
+*.csv
+!references/**/*.csv
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- 模型輸出 ---
+*.pkl
+*.joblib
+models/

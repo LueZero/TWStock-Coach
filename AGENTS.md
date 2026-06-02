@@ -52,6 +52,15 @@ python scripts/backtest.py --code <股票代碼> --stop-loss-atr 2.0 --position-
 python scripts/tune.py --code <股票代碼> --n_trials 30 --save
 ```
 
+### 法人籌碼資料
+```bash
+# 抓取籌碼資料（三大法人 + 融資融券 + 借券）
+python scripts/institutional_data.py --code <股票代碼> --days 180 --save
+
+# 籌碼面分析（含綜合評分）
+python scripts/institutional_data.py --code <股票代碼> --action analyze
+```
+
 ## 股票代碼對照
 
 | 公司 | 代碼 | | 公司 | 代碼 |
@@ -108,16 +117,18 @@ python scripts/tune.py --code <股票代碼> --n_trials 30 --save
 
 `report_generator.py` 會自動：
 1. 抓取即時報價 + 技術指標
-2. 載入大盤代理 `data/0050_history.csv`（若存在）作跨資產特徵
-3. 載入 `models/<code>_best_params.json`（若存在）作 Optuna 調過的最佳參數
-4. 用 XGB+LGB ensemble 預測未來 N 天
-5. 給出 BUY/HOLD/SELL 訊號 + 建議止損價（現價 × 0.95）
+2. 載入籌碼資料 `data/<code>_institutional.csv`（若存在）作法人特徵 + 獨立籌碼面報告
+3. 載入大盤代理 `data/0050_history.csv`（若存在）作跨資產特徵
+4. 載入 `models/<code>_best_params.json`（若存在）作 Optuna 調過的最佳參數
+5. 用 XGB+LGB ensemble 預測未來 N 天（含籌碼特徵）
+6. 給出 BUY/HOLD/SELL 訊號 + 建議止損價（現價 × 0.95）
 
 **首次分析新股票建議流程：**
 1. 抓 3 年資料：`fetch_stock_data.py --code <code> --days 1095 --save`
 2. 抓大盤代理（若尚無）：`fetch_stock_data.py --code 0050 --days 1095 --save`
-3. （選擇性）Optuna 調參：`tune.py --code <code> --n_trials 30 --save`
-4. 產報告：`report_generator.py --code <code>`
+3. 抓籌碼資料：`institutional_data.py --code <code> --days 180 --save`
+4. （選擇性）Optuna 調參：`tune.py --code <code> --n_trials 30 --save`
+5. 產報告：`report_generator.py --code <code>`
 
 **回測驗證效果：**
 - 預設止損 5% 在多數股票表現最佳（Phase 4 實驗結果）
@@ -150,6 +161,15 @@ python scripts/tune.py --code <股票代碼> --n_trials 30 --save
 | **Sharpe** | 報酬與風險的比值 | >1 不錯、>2 很好、>3 極佳 |
 | **MDD 最大回撤** | 史上最慘賠多少% | 越接近 0 越穩，<-30% 要心臟強 |
 | **Buy & Hold** | 「一路抱著不動」的對照組 | 我們的策略要能贏過它才有價值 |
+| **三大法人** | 外資＋投信＋自營商 | 這三者合計買賣超代表「大戶動向」 |
+| **外資連買/連賣** | 外資連續好幾天買入或賣出 | 連買 5 天以上 = 強勢支撐、連賣 5 天 = 大壓力 |
+| **投信買超** | 國內基金公司在買 | 投信通常做波段，連買代表看好 1-3 個月 |
+| **融資** | 散戶借錢買股票 | 融資大增 = 散戶追高（小心回跌）|
+| **融券** | 借股票來賣（看空） | 融券大增 = 多人看空，但有軋空可能 |
+| **券資比** | 融券 ÷ 融資的比例 | >30% 偏高（軋空機率增加）|
+| **借券賣出** | 法人放空的方式 | 餘額大增 = 法人看空，比融券更有參考性 |
+| **籌碼評分** | 綜合法人動向的分數（0-100） | >65 偏多、35-65 中性、<35 偏空 |
+| **集保大戶** | 持股 400 張以上的人 | 比例上升 = 大戶在收、下降 = 大戶在倒 |
 
 ### 訊號解讀範本（agent 看到 BUY 時要怎麼說）
 

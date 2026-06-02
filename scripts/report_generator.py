@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from fetch_stock_data import TWStockFetcher
 from technical_analysis import TechnicalAnalyzer
 from prediction_model import StockPredictor, load_market_df
+from institutional_data import InstitutionalAnalyzer, load_institutional_df
 
 
 def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> str:
@@ -99,7 +100,60 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
         report_parts.append(f"\n**綜合研判: {result['overall']}**")
         report_parts.append("")
 
-        # 3. ML 預測（含 ensemble + 大盤特徵 + 最佳參數）
+        # 2.5 籌碼面分析
+        institutional_df = load_institutional_df(code, data_dir)
+        if institutional_df is not None and not institutional_df.empty:
+            report_parts.append("## 籌碼面分析")
+            inst_analyzer = InstitutionalAnalyzer(institutional_df)
+            inst_result = inst_analyzer.analyze()
+
+            if "error" not in inst_result:
+                summary = inst_result["summary"]
+                report_parts.append(f"**綜合籌碼評分: {inst_result['score']}/100 — {summary['overall']}**")
+                report_parts.append(f"  {summary['description']}")
+                report_parts.append("")
+
+                # 法人動向
+                foreign = inst_result["foreign"]
+                trust = inst_result["trust"]
+                report_parts.append("### 法人動向")
+                report_parts.append(f"- 外資: 今日 {foreign['net_today']:+,} 股 | 5日累計 {foreign['net_5d']:+,} | 10日累計 {foreign['net_10d']:+,}")
+                if foreign["consecutive_buy_days"] > 0:
+                    report_parts.append(f"  → 連續買超 {foreign['consecutive_buy_days']} 天")
+                elif foreign["consecutive_sell_days"] > 0:
+                    report_parts.append(f"  → 連續賣超 {foreign['consecutive_sell_days']} 天")
+                report_parts.append(f"- 投信: 今日 {trust['net_today']:+,} 股 | 5日累計 {trust['net_5d']:+,} | 10日累計 {trust['net_10d']:+,}")
+                if trust["consecutive_buy_days"] > 0:
+                    report_parts.append(f"  → 連續買超 {trust['consecutive_buy_days']} 天")
+                elif trust["consecutive_sell_days"] > 0:
+                    report_parts.append(f"  → 連續賣超 {trust['consecutive_sell_days']} 天")
+
+                dealer = inst_result["dealer"]
+                report_parts.append(f"- 自營商: 今日 {dealer['net_today']:+,} 股 | 5日累計 {dealer['net_5d']:+,}")
+                report_parts.append("")
+
+                # 融資融券
+                margin = inst_result.get("margin", {})
+                if margin:
+                    report_parts.append("### 融資融券")
+                    report_parts.append(f"- 融資餘額: {margin.get('margin_balance', 0):,} 張")
+                    report_parts.append(f"- 融券餘額: {margin.get('short_balance', 0):,} 張")
+                    report_parts.append(f"- 券資比: {margin.get('margin_short_ratio', 0):.2f}%")
+                    if margin.get("margin_change_5d_pct", 0) != 0:
+                        report_parts.append(f"- 融資 5 日變化: {margin['margin_change_5d_pct']:+.2f}%")
+                    report_parts.append("")
+
+                # 籌碼訊號
+                if inst_result["signals"]:
+                    report_parts.append("### 籌碼訊號")
+                    for icon, desc in inst_result["signals"]:
+                        report_parts.append(f"  {icon} {desc}")
+                    report_parts.append("")
+            else:
+                report_parts.append(f"  ⚠️ {inst_result['error']}")
+                report_parts.append("")
+
+        # 3. ML 預測（含 ensemble + 大盤特徵 + 最佳參數 + 籌碼特徵）
         report_parts.append(f"## ML 預測（未來 {days_ahead} 天）")
 
         params = None
@@ -113,8 +167,11 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
         if market_df is not None:
             report_parts.append("  已納入大盤跨資產特徵（0050）")
 
+        if institutional_df is not None:
+            report_parts.append(f"  已納入法人籌碼特徵（{len(institutional_df)} 筆）")
+
         predictor = StockPredictor(ensemble=True, params=params)
-        pred = predictor.predict(df, days_ahead, market_df=market_df)
+        pred = predictor.predict(df, days_ahead, market_df=market_df, institutional_df=institutional_df)
 
         if "error" not in pred:
             report_parts.append(f"- 模型: {pred['model']}")

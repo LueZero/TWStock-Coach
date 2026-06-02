@@ -43,7 +43,48 @@ class FeatureEngineer:
         return merged
 
     @staticmethod
-    def create_features(df: pd.DataFrame, market_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def _add_institutional_features(data: pd.DataFrame, inst_df: pd.DataFrame) -> pd.DataFrame:
+        """加入法人籌碼特徵：買賣超累計、連買天數、融資融券變化、券資比"""
+        from institutional_data import create_institutional_features
+
+        inst = create_institutional_features(inst_df)
+        inst["date"] = pd.to_datetime(inst["date"])
+        data["date"] = pd.to_datetime(data["date"])
+
+        # 選擇要合併的特徵欄位（排除原始欄位，只保留衍生特徵）
+        feature_cols = [c for c in inst.columns if c != "date" and (
+            "_5d" in c or "_10d" in c or "_20d" in c or
+            "streak" in c or "change" in c or "ratio" in c
+        )]
+        merge_cols = ["date"] + feature_cols
+
+        merged = data.merge(inst[merge_cols], on="date", how="left")
+
+        # 法人買賣超佔成交量比例
+        if "total_institutional_net" in inst.columns and "volume" in merged.columns:
+            inst_vol = inst[["date", "total_institutional_net"]].copy()
+            merged = merged.merge(inst_vol, on="date", how="left", suffixes=("", "_raw"))
+            merged["inst_volume_ratio"] = np.where(
+                merged["volume"] > 0,
+                merged["total_institutional_net"] / merged["volume"],
+                0,
+            )
+            # 移除合併用的臨時欄位
+            if "total_institutional_net_raw" in merged.columns:
+                merged.drop(columns=["total_institutional_net_raw"], inplace=True)
+            if "total_institutional_net" in merged.columns:
+                merged.drop(columns=["total_institutional_net"], inplace=True)
+
+        # forward-fill 籌碼特徵（交易日缺漏）
+        for col in feature_cols + ["inst_volume_ratio"]:
+            if col in merged.columns:
+                merged[col] = merged[col].ffill()
+
+        return merged
+
+    @staticmethod
+    def create_features(df: pd.DataFrame, market_df: Optional[pd.DataFrame] = None,
+                        institutional_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
         data = df.copy()
         n = len(data)
 
@@ -100,6 +141,10 @@ class FeatureEngineer:
         # 跨資產特徵（若提供大盤資料）
         if market_df is not None and not market_df.empty:
             data = FeatureEngineer._add_market_features(data, market_df)
+
+        # 法人籌碼特徵（若提供籌碼資料）
+        if institutional_df is not None and not institutional_df.empty:
+            data = FeatureEngineer._add_institutional_features(data, institutional_df)
 
         return data.dropna().reset_index(drop=True)
 
@@ -247,14 +292,16 @@ class StockPredictor:
 
         return {"action": action, "reason": reason, "threshold": round(threshold * 100, 2)}
 
-    def predict(self, df: pd.DataFrame, days_ahead: int = 5, market_df: Optional[pd.DataFrame] = None) -> dict:
+    def predict(self, df: pd.DataFrame, days_ahead: int = 5,
+                market_df: Optional[pd.DataFrame] = None,
+                institutional_df: Optional[pd.DataFrame] = None) -> dict:
         """預測未來走勢（ensemble 回歸 + 分類 + 訊號）"""
         try:
             import xgboost  # noqa: F401
         except ImportError:
             return {"error": "需要安裝 xgboost: pip install xgboost"}
 
-        data = FeatureEngineer.create_features(df, market_df=market_df)
+        data = FeatureEngineer.create_features(df, market_df=market_df, institutional_df=institutional_df)
         if len(data) < 30:
             return {
                 "error": f"資料不足（需要至少 30 筆有效樣本，目前 {len(data)} 筆）",
@@ -412,15 +459,25 @@ def main():
 
     market_df = None if args.no_market else load_market_df(args.data_dir, args.market_code)
 
+    # 載入籌碼資料（若存在）
+    institutional_df = None
+    try:
+        from institutional_data import load_institutional_df
+        institutional_df = load_institutional_df(args.code, args.data_dir)
+    except ImportError:
+        pass
+
     params = None
     if args.params and os.path.exists(args.params):
         with open(args.params, encoding="utf-8") as f:
             params = json.load(f)
 
     predictor = StockPredictor(params=params)
-    result = predictor.predict(df, args.days_ahead, market_df=market_df)
+    result = predictor.predict(df, args.days_ahead, market_df=market_df, institutional_df=institutional_df)
     if market_df is not None:
         result["market_features"] = f"已納入大盤代理 {args.market_code}"
+    if institutional_df is not None:
+        result["institutional_features"] = f"已納入籌碼特徵（{len(institutional_df)} 筆）"
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

@@ -95,6 +95,12 @@ if (Test-Path $reqFile) {
     $pipExe = Get-Command pip -ErrorAction SilentlyContinue
 
     if ($uvExe) {
+        # 💡 修正：如果本地有 uv，先檢查並建立虛擬環境，避免 uv pip 報錯
+        $venvDir = Join-Path $ProjectRoot ".venv"
+        if (-not (Test-Path $venvDir)) {
+            Write-Host "  正在建立 Python 虛擬環境 (.venv)..." -ForegroundColor White
+            & uv venv --quiet
+        }
         & uv pip install -r $reqFile --quiet 2>&1 | Out-Null
         Write-Host "  依賴已安裝 (uv)" -ForegroundColor Green
     } elseif ($pipExe) {

@@ -76,7 +76,7 @@ class TaiwanStockScreener:
             last_status = payload.get("stat", last_status)
         raise ValueError(f"最近 7 日找不到可用上市收盤行情：{last_status}")
 
-    def screen(self, min_price, max_price, min_volume, candidate_limit, limit, history_days):
+    def screen(self, min_price, max_price, min_volume, candidate_limit, limit, history_days, direction):
         quotes = [
             quote for quote in self.listed_quotes()
             if min_price <= quote["screen_close"] <= max_price and quote["volume"] >= min_volume
@@ -90,7 +90,9 @@ class TaiwanStockScreener:
                 continue
             result = TechnicalAnalysisController(history).analyze()
             summary = result.summary
-            if result.overall == "偏空":
+            if direction == "bullish" and result.overall == "偏空":
+                continue
+            if direction == "bearish" and result.overall != "偏空":
                 continue
             candidates.append({
                 **quote,
@@ -102,10 +104,16 @@ class TaiwanStockScreener:
                 "trailing_stop": summary["trailing_stop"].get("price"),
                 "signals": [
                     {"category": signal.category, "description": signal.description}
-                    for signal in result.signals if signal.direction == "bullish"
+                    for signal in result.signals
+                    if direction == "both" or signal.direction == direction
                 ],
             })
-        candidates.sort(key=lambda item: (item["bullish_score"] - item["bearish_score"], item["volume"]), reverse=True)
+        score_key = (
+            lambda item: (item["bearish_score"] - item["bullish_score"], item["volume"])
+            if direction == "bearish"
+            else (item["bullish_score"] - item["bearish_score"], item["volume"])
+        )
+        candidates.sort(key=score_key, reverse=True)
         for candidate in candidates[:limit]:
             realtime = fetcher.get_realtime(candidate["code"])
             candidate["realtime_close"] = realtime.get("close") if "error" not in realtime else None
@@ -121,7 +129,7 @@ class TaiwanStockScreener:
             else:
                 candidate["realtime_status"] = "no_latest_trade"
                 candidate["realtime_note"] = "即時 API 未提供最新成交價，請以 screen_close 作為最近收盤價。"
-        return {"scope": "TWSE 上市普通股", "as_of": quotes[0]["quote_date"] if quotes else None, "filters": {"min_price": min_price, "max_price": max_price, "min_volume": min_volume, "history_days": history_days}, "screened_count": len(quotes), "candidates": candidates[:limit], "notice": "screen_close 是篩選用的最近交易日收盤價；realtime_close 是即時 API 回傳價。候選依技術訊號排序，不預測或保證今日上漲金額。"}
+        return {"scope": "TWSE 上市普通股", "as_of": quotes[0]["quote_date"] if quotes else None, "filters": {"min_price": min_price, "max_price": max_price, "min_volume": min_volume, "history_days": history_days, "direction": direction}, "screened_count": len(quotes), "candidates": candidates[:limit], "notice": "screen_close 是篩選用的最近交易日收盤價；realtime_close 是即時 API 回傳價。候選依技術訊號排序，不預測或保證今日上漲或下跌金額。"}
 
 
 def main():
@@ -132,6 +140,7 @@ def main():
     parser.add_argument("--candidate-limit", type=int, default=10, help="先依流動性取前幾檔抓歷史資料")
     parser.add_argument("--limit", type=int, default=5, help="最多輸出候選數")
     parser.add_argument("--history-days", type=int, default=180, help="每檔技術分析的日曆資料天數")
+    parser.add_argument("--direction", choices=("bullish", "bearish", "both"), default="bullish", help="篩選偏多、偏空或全部技術面候選")
     args = parser.parse_args()
     if args.min_price > args.max_price or min(args.candidate_limit, args.limit, args.history_days) < 1:
         parser.error("價格區間與數量參數必須為有效正值")

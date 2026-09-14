@@ -10,6 +10,9 @@ twstock-coach/
 ├── scripts/                  # 核心分析腳本（全部用 --code 參數，無 hardcode）
 │   ├── fetch_stock_data.py   # 抓 TWSE/TPEX 即時報價 + 歷史 K 線
 │   ├── technical_analysis.py # 趨勢、動能、波動、量價與支撐壓力指標
+│   ├── fundamental_analysis.py # 上市個股本益比/殖利率/淨值比/月營收/獲利能力
+│   ├── etf_analysis.py       # ETF 基本資料（追蹤指數/保管機構，不含 NAV 折溢價）
+│   ├── day_trading_analysis.py # 當沖風控參考：即時五檔、今日振幅、漲跌停距離
 │   ├── institutional_data.py # 個股與 TWSE 大盤三大法人、融資融券、借券、集保
 │   ├── prediction_model.py   # XGB+LGB ensemble + 跨資產特徵
 │   ├── backtest.py           # Walk-forward 回測 + ATR 止損 + 真實複利
@@ -44,6 +47,9 @@ twstock-coach/
 |------|------|------|------|------|
 | `fetch_stock_data` | 股票代碼、天數 | CSV 歷史檔 / JSON 即時報價 | TWSE/TPEX API | 其他所有腳本 |
 | `technical_analysis` | CSV 歷史檔 | JSON 指標值 + 訊號 | fetch | report |
+| `fundamental_analysis` | 個股代碼 | JSON 本益比/殖利率/淨值比/月營收/獲利能力 | TWSE OpenAPI | report |
+| `etf_analysis` | ETF 代碼 | JSON 追蹤指數/保管機構等基本資料 | TWSE OpenAPI | report |
+| `day_trading_analysis` | 股票代碼 | JSON 即時快照 + 風控訊號（振幅/區間位置/漲跌停距離/五檔） | TWSE 即時 + OpenAPI | report（選項） |
 | `institutional_data` | 個股代碼或大盤日期區間 | 個股/大盤法人籌碼 JSON + CSV | TWSE/TPEX/TDCC | report + ML |
 | `prediction_model` | CSV + 大盤 CSV + 參數 | JSON 預測 + 訊號 | fetch + tune | report + backtest |
 | `backtest` | CSV + 參數 + 止損設定 | JSON 績效（含 realistic 區塊） | fetch + tune | （CLI 直接看） |

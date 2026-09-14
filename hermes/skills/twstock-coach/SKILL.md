@@ -61,6 +61,30 @@ python scripts/sentiment_analysis.py --code <code> --name <公司名稱> --days 
 
 回覆需列出文章數、來源與標題，並說明這是標題關鍵詞統計，不納入技術分數或 ML 預測，不能代表市場共識或交易指令。
 
+### 基本面 / ETF 價值分析
+當使用者問「貴不貴」「便宜嗎」「殖利率多少」「營收成長如何」時：
+
+```bash
+# 上市個股：本益比/殖利率/淨值比/月營收 MoM-YoY/獲利能力
+python scripts/fundamental_analysis.py --code <code>
+
+# ETF：追蹤指數/是否含國外成分股/保管機構
+python scripts/etf_analysis.py --code <ETF代碼>
+```
+
+基本面僅供價值面參考，不納入技術分數或 ML 特徵。查無資料時，先判斷該代碼是否為 ETF、權證或上櫃股票、再回覆使用者，不要直接說系統壞了。ETF 注意：TWSE 免費 API **不提供** NAV 折溢價與內扣費用率，不能假裝有這項資訊。
+
+### 當沖（當日沖銷）風控參考
+當使用者問「當沖」「今天可以沖嗎」「當日沖銷」時：
+
+```bash
+python scripts/day_trading_analysis.py --code <code>
+# 或在綜合報告中一起加入
+python scripts/report_generator.py --code <code> --day-trade
+```
+
+提供今日振幅、現價在今日高低區間的位置、距離漲跌停、委買賣價差、五檔委買量佔比，以及當日是否暫停現股當沖先賣後買。務必先確認現在是否為盤中（開盤時間查詢才有意義），並提醒這只是即時快照、不是逐筆委託簿、不能預測盤中未來走勢，且不建議新手輕易嘗試當沖。
+
 ### 買進意圖與價格區間候選
 使用者說「我想買 <股票代碼或名稱>」時，依序執行即時報價、歷史日 K（不足時先補抓）、技術分析與公開新聞輿情；輿情只用來說明近期事件與風向，不計入技術分數或 ML 預測。依訊號、風險與止損給機率性解讀，不直接回答必買或必賣。
 
@@ -152,6 +176,12 @@ python scripts/institutional_data.py --action market --days 20 --save
 | Sharpe | 報酬/風險比 | >1 不錯、>2 很好 |
 | MDD | 史上最慘賠多少% | 越接近 0 越穩 |
 | Buy & Hold | 一路抱不動的對照組 | 策略要贏過它才有價值 |
+| 本益比 (P/E) | 股價是每股獲利的幾倍 | 太低可能便宜或有隱憂、太高可能貴或高成長預期 |
+| 殖利率 | 配息占股價比例 | 越高代表領股息報酬率越好 |
+| 月營收 MoM/YoY | 這月比上月/去年同月多或少賺幾% | 連續正成長代表營運轉強 |
+| ETF 折溢價 | 市價比淨值貴或便宜多少 | 系統無法取得，勿假裝有此資訊 |
+| 今日振幅 | 今天最高與最低價差佔昨收比例 | 太小當沖不易賺超過手續費 |
+| 五檔委買委賣 | 排隊等成交的買單/賣單價量 | 委買量占比高=當下買盤較強，僅反映查詢瞬間 |
 
 ## Pitfalls
 
@@ -159,9 +189,11 @@ python scripts/institutional_data.py --action market --days 20 --save
 - 跨資產基準為可選功能；只有使用者指定 `--market-code` 時才載入。應選擇與個股分析目的相符的市場或產業基準，不能假設 0050 對所有個股都更準。
 - 回測複利數字會騙人，看實戰數字請用 `--position-size 0.1` 的 `strategy_realistic` 欄位
 - 訊號出 BUY 但機率 < 65% → 只建議小部位試水溫
+- `day_trading_analysis.py` 只在盤中（09:00-13:30）查詢才有意義，盤後查詢到的五檔與振幅是收盤當下的殘影，須提醒使用者；且輸出不含逐筆委託簿，數秒內市況就可能不同
 - 代碼開頭是 0 的標的（0050、00881 等 ETF）存進 CSV 的 `stock_code` 欄若被 pandas 當數字讀入會變成 881，導致 `validate_history_code` 誤判「代碼不符」而中斷報告。`fetch_stock_data.py`、`technical_analysis.py`、`prediction_model.py`、`report_generator.py` 讀歷史 CSV 時都必須帶 `dtype={"stock_code": str}`（已修）；若之後新增讀 CSV 的腳本，記得比照辦理
 - `institutional_data.py --code <code>` 對單一個股抓法人籌碼常在 60~120 秒內逾時（TWSE 個股籌碼端點慢），碰到逾時就跳過該步驟繼續產報告，不要重試卡住整個流程；`--action market`（大盤加總）通常正常
 - `fetch_stock_data.py` 對 TWSE 即時報價偶發 SSL handshake timeout，等 1-2 秒重試一次即可，不要連續重試多次卡住
+- `fundamental_analysis.py`/`etf_analysis.py` 抓的是 TWSE 全市場彙總表（本益比、月營收、營益分析、基金基本資料），單次呼叫可能要幾秒到十幾秒；ETF 代碼查不到本益比資料是正常的（ETF 本來就不適用 P/E），不要當成錯誤
 - 使用者若要求「保證上漲」「保證漲 N 元」這類說法，先澄清釐清真實需求（例如改成「技術面訊號較強的候選」），不要直接執行也不要用模型數字包裝成保證
 
 ## Verification

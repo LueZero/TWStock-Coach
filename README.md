@@ -88,6 +88,8 @@ cp .hermes/.env.example .hermes/.env
 |------|-----------|
 | 「查台積電即時股價」 | 呼叫 TWSE API，回傳最新報價 |
 | 「分析 2330 技術指標」 | 跑趨勢、動能、波動、量價與支撐壓力分析 |
+| 「台積電本益比貴不貴」 | 查本益比、殖利率、股價淨值比與月營收 YoY |
+| 「0050 追蹤什麼指數」 | 查 ETF 追蹤指數、保管機構等基本資料 |
 | 「預測鴻海未來 5 天走勢」 | ML 模型給預測報酬 + 機率 + BUY/HOLD/SELL 訊號 |
 | 「產生聯發科完整投資報告」 | 即時報價 + 指標 + ML + ATR 止損價，全部白話翻譯 |
 | 「2308 回測一下」 | Walk-forward 回測 + Sharpe / MDD / 勝率 |
@@ -101,6 +103,15 @@ python scripts/fetch_stock_data.py --code 2330 --action history --days 1095 --sa
 
 # 技術分析
 python scripts/technical_analysis.py --code 2330 --indicators all
+
+# 基本面分析（本益比/殖利率/淨值比/月營收/獲利能力，上市個股用）
+python scripts/fundamental_analysis.py --code 2330
+
+# ETF 基本資料（追蹤指數/保管機構，不含 NAV 折溢價）
+python scripts/etf_analysis.py --code 0050
+
+# 當沖（當日沖銷）風控參考（需盤中查詢才有意義）
+python scripts/day_trading_analysis.py --code 2330
 
 # 掃描收盤價 25 至 35 元的上市技術面候選
 python scripts/stock_screener.py --min-price 25 --max-price 35 --min-volume 1000000

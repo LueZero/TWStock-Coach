@@ -21,8 +21,11 @@
 .hermes/skills/
 .hermes/plugins/
 .hermes/SOUL.md
-.hermes/models_dev_cache.json
+.hermes/models_dev_cache.*
 .hermes/ollama_cloud_models_cache.json
+.hermes/provider_models_cache.json
+.hermes/processes.json
+.hermes/pastes/
 .hermes/state.db
 .hermes/state.db-shm
 .hermes/state.db-wal

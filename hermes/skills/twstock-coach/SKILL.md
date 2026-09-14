@@ -18,6 +18,7 @@ metadata:
 
 - 使用者提到台股代碼（4 位數字，如 2330、0050）或公司名稱（台積電、鴻海...）
 - 使用者要求「分析」「預測」「報告」「該不該買」「止損價」「技術指標」
+- 使用者說「我想買 <股票代碼或名稱>」或「這檔能買嗎」時，套用技術分析；未提供可辨識代碼或名稱才追問。
 - 使用者要求白話解讀模型結果
 
 ## Procedure
@@ -51,12 +52,32 @@ python scripts/fetch_stock_data.py --code <code> --action history --days 1095 --
 python scripts/technical_analysis.py --code <code> --indicators all
 ```
 
+### 公開新聞輿情
+當使用者詢問「新聞風向」「輿情」或「最近市場怎麼看」時，執行：
+
+```bash
+python scripts/sentiment_analysis.py --code <code> --name <公司名稱> --days 7
+```
+
+回覆需列出文章數、來源與標題，並說明這是標題關鍵詞統計，不納入技術分數或 ML 預測，不能代表市場共識或交易指令。
+
+### 買進意圖與價格區間候選
+使用者說「我想買 <股票代碼或名稱>」時，依序執行即時報價、歷史日 K（不足時先補抓）、技術分析與公開新聞輿情；輿情只用來說明近期事件與風向，不計入技術分數或 ML 預測。依訊號、風險與止損給機率性解讀，不直接回答必買或必賣。
+
+使用者要求「找 25~35 元附近的股票」或「依價格篩選」時，執行：
+
+```bash
+python scripts/stock_screener.py --min-price 25 --max-price 35 --min-volume 1000000
+```
+
+掃描器先依 TWSE 上市普通股最近可用收盤價及成交量篩選，再對流動性最高候選抓取歷史日 K，以同一套技術規則排序。結果是候選，不保證上漲或固定上漲金額；目前不含上櫃、ETF、權證。
+
 ### 5. ML 預測
 ```bash
 python scripts/prediction_model.py --code <code> --days_ahead 5 --model xgboost
 ```
 
-### 6. 綜合報告（會整合上述全部 + ATR 止損）
+### 6. 綜合報告（會整合技術、輿情、籌碼、ML 與 ATR 止損）
 ```bash
 python scripts/report_generator.py --code <code> --days-ahead 5
 ```
@@ -70,6 +91,15 @@ python scripts/backtest.py --code <code> --stop-loss-atr 2.0 --position-size 0.1
 ```bash
 python scripts/tune.py --code <code> --n_trials 30 --save
 ```
+
+### 大盤三大法人
+當使用者詢問「大盤法人買超/賣超」時，不需要股票代碼：
+
+```bash
+python scripts/institutional_data.py --action market --days 20 --save
+```
+
+資料為 TWSE 上市全市場加總，不含櫃買市場，也不是券商分點主力進出。
 
 ## 動態決策邏輯（重要）
 
@@ -126,9 +156,13 @@ python scripts/tune.py --code <code> --n_trials 30 --save
 ## Pitfalls
 
 - 預設 `--days 180` 不夠 ML 用，跑預測前先用 `--days 365` 或更多
-- 0050 大盤代理檔不存在會降低預測精度，建議一併抓 `data/0050_history.csv`
+- 跨資產基準為可選功能；只有使用者指定 `--market-code` 時才載入。應選擇與個股分析目的相符的市場或產業基準，不能假設 0050 對所有個股都更準。
 - 回測複利數字會騙人，看實戰數字請用 `--position-size 0.1` 的 `strategy_realistic` 欄位
 - 訊號出 BUY 但機率 < 65% → 只建議小部位試水溫
+- 代碼開頭是 0 的標的（0050、00881 等 ETF）存進 CSV 的 `stock_code` 欄若被 pandas 當數字讀入會變成 881，導致 `validate_history_code` 誤判「代碼不符」而中斷報告。`fetch_stock_data.py`、`technical_analysis.py`、`prediction_model.py`、`report_generator.py` 讀歷史 CSV 時都必須帶 `dtype={"stock_code": str}`（已修）；若之後新增讀 CSV 的腳本，記得比照辦理
+- `institutional_data.py --code <code>` 對單一個股抓法人籌碼常在 60~120 秒內逾時（TWSE 個股籌碼端點慢），碰到逾時就跳過該步驟繼續產報告，不要重試卡住整個流程；`--action market`（大盤加總）通常正常
+- `fetch_stock_data.py` 對 TWSE 即時報價偶發 SSL handshake timeout，等 1-2 秒重試一次即可，不要連續重試多次卡住
+- 使用者若要求「保證上漲」「保證漲 N 元」這類說法，先澄清釐清真實需求（例如改成「技術面訊號較強的候選」），不要直接執行也不要用模型數字包裝成保證
 
 ## Verification
 

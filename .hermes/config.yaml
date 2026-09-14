@@ -24,13 +24,9 @@ memory:
   nudge_interval: 10
 skills:
   creation_nudge_interval: 15
-  # 額外掃描的 skills 目錄（相對於 .hermes/ 或絕對路徑）
-  # repo 內的自訂 skills 放在 ../hermes/skills/，跟著 git 版控
   external_dirs:
     - ../hermes/skills
 plugins:
-  # 啟用的自訂 plugins（放在 ../hermes/plugins/）
-  # 注意：project-local plugins 需啟動前設 HERMES_ENABLE_PROJECT_PLUGINS=true
   enabled: []
   disabled: []
 display:
@@ -40,3 +36,4 @@ display:
 onboarding:
   seen:
     tool_progress_prompt: true
+    busy_input_prompt: true

@@ -84,14 +84,56 @@ class InstitutionalFetcher:
                         "trust_buy": self._safe_int(row[8]),
                         "trust_sell": self._safe_int(row[9]),
                         "trust_net": self._safe_int(row[10]),
-                        "dealer_self_net": self._safe_int(row[13]),
-                        "dealer_hedge_net": self._safe_int(row[16]),
-                        "dealer_net": self._safe_int(row[13]) + self._safe_int(row[16]),
-                        "total_institutional_net": self._safe_int(row[17]),
+                        "dealer_self_net": self._safe_int(row[14]),
+                        "dealer_hedge_net": self._safe_int(row[17]),
+                        "dealer_net": self._safe_int(row[11]),
+                        "total_institutional_net": self._safe_int(row[18]),
                     }
             return None
         except Exception:
             return None
+
+    def fetch_market_institutional(self, date_str: str) -> Optional[dict]:
+        """加總 TWSE T86 當日全市場三大法人買賣超。"""
+        self._throttle()
+        params = {"response": "json", "date": date_str, "selectType": "ALL"}
+        try:
+            response = self.session.get(self.TWSE_T86, params=params, timeout=10)
+            data = response.json()
+            rows = data.get("data", [])
+            if data.get("stat") != "OK" or not rows:
+                return None
+            foreign_net = sum(self._safe_int(row[4]) for row in rows)
+            trust_net = sum(self._safe_int(row[10]) for row in rows)
+            dealer_net = sum(self._safe_int(row[11]) for row in rows)
+            return {
+                "date": f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}",
+                "foreign_net": foreign_net,
+                "trust_net": trust_net,
+                "dealer_net": dealer_net,
+                "total_institutional_net": sum(self._safe_int(row[18]) for row in rows),
+                "stock_count": len(rows),
+            }
+        except (requests.RequestException, ValueError, KeyError, IndexError):
+            return None
+
+    def fetch_market_history(self, days: int = 20) -> pd.DataFrame:
+        """抓取 TWSE 大盤三大法人歷史買賣超。"""
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        records = []
+        current = start_date
+        while current <= end_date:
+            if current.weekday() < 5:
+                record = self.fetch_market_institutional(current.strftime("%Y%m%d"))
+                if record:
+                    records.append(record)
+            current += timedelta(days=1)
+        if not records:
+            return pd.DataFrame()
+        df = pd.DataFrame(records)
+        df["date"] = pd.to_datetime(df["date"])
+        return df.sort_values("date").drop_duplicates("date").reset_index(drop=True)
 
     def fetch_margin(self, code: str, date_str: str) -> Optional[dict]:
         """抓取單日融資融券餘額（MI_MARGN API）
@@ -569,6 +611,23 @@ def load_institutional_df(code: str, data_dir: str = "data") -> Optional[pd.Data
     path = os.path.join(data_dir, f"{code}_institutional.csv")
     if not os.path.exists(path):
         return None
+
+
+def summarize_market_institutional(df: pd.DataFrame) -> dict:
+    """產出大盤法人買賣超摘要，重用既有的法人連買連賣統計。"""
+    if df.empty or len(df) < 5:
+        return {"error": "大盤法人資料不足（至少需 5 個交易日）"}
+    analyzer = InstitutionalAnalyzer(df)
+    result = analyzer.analyze()
+    result["market"] = {
+        "latest_date": str(df["date"].iloc[-1].date()),
+        "stock_count": int(df["stock_count"].iloc[-1]) if "stock_count" in df else None,
+        "latest_total_net": int(df["total_institutional_net"].iloc[-1]),
+        "net_5d": int(df["total_institutional_net"].tail(5).sum()),
+        "net_10d": int(df["total_institutional_net"].tail(10).sum()),
+        "source": "TWSE T86 全市場加總；不含櫃買市場與券商分點主力資料。",
+    }
+    return result
     try:
         df = pd.read_csv(path, parse_dates=["date"])
         return df
@@ -578,13 +637,29 @@ def load_institutional_df(code: str, data_dir: str = "data") -> Optional[pd.Data
 
 def main():
     parser = argparse.ArgumentParser(description="台灣股票法人籌碼資料")
-    parser.add_argument("--code", required=True, help="股票代碼")
-    parser.add_argument("--action", choices=["fetch", "analyze"], default="fetch",
-                        help="fetch=抓取資料, analyze=分析")
+    parser.add_argument("--code", help="股票代碼（market action 不需要）")
+    parser.add_argument("--action", choices=["fetch", "analyze", "market"], default="fetch",
+                        help="fetch=抓取個股, analyze=分析個股, market=大盤三大法人")
     parser.add_argument("--days", type=int, default=180, help="歷史天數")
     parser.add_argument("--save", action="store_true", help="儲存至 data/ 目錄")
     parser.add_argument("--data-dir", default="data", help="資料儲存目錄")
     args = parser.parse_args()
+
+    if args.action in {"fetch", "analyze"} and not args.code:
+        parser.error("--code 為 fetch 與 analyze action 的必要參數")
+
+    if args.action == "market":
+        fetcher = InstitutionalFetcher()
+        print(f"開始抓取 TWSE 大盤三大法人資料（{args.days} 天）...")
+        df = fetcher.fetch_market_history(args.days)
+        if df.empty:
+            print(json.dumps({"error": "無法取得 TWSE 大盤法人資料"}, ensure_ascii=False))
+            return
+        if args.save:
+            os.makedirs(args.data_dir, exist_ok=True)
+            df.to_csv(os.path.join(args.data_dir, "market_institutional.csv"), index=False)
+        print(json.dumps(summarize_market_institutional(df), ensure_ascii=False, indent=2, default=str))
+        return
 
     if args.action == "fetch":
         fetcher = InstitutionalFetcher()

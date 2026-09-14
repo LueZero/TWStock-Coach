@@ -9,12 +9,13 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
 
 from fetch_stock_data import TWStockFetcher
-from technical_analysis import TechnicalAnalyzer
+from technical_analysis import TechnicalAnalyzer, validate_history_code
 from prediction_model import StockPredictor, load_market_df
 from institutional_data import InstitutionalAnalyzer, load_institutional_df
+from sentiment_analysis import NewsSentimentAnalyzer
 
 
-def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> str:
+def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data", market_code: str | None = None) -> str:
     """產生完整投資報告"""
     report_parts = []
     report_parts.append(f"# 📊 股票分析報告 - {code}")
@@ -51,13 +52,22 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
             df.to_csv(csv_path, index=False)
             has_history = True
             report_parts.append(f"  已取得 {len(df)} 筆資料")
+            if df.attrs.get("failed_months"):
+                report_parts.append(
+                    f"  ⚠️ 部分月份抓取失敗：{', '.join(df.attrs['failed_months'])}；技術指標可能不完整。"
+                )
         else:
             report_parts.append("  ⚠️ 無法取得歷史資料")
         report_parts.append("")
 
     if has_history:
         import pandas as pd
-        df = pd.read_csv(csv_path, parse_dates=["date"])
+        df = pd.read_csv(csv_path, parse_dates=["date"], dtype={"stock_code": str})
+        try:
+            validate_history_code(df, code)
+        except ValueError as error:
+            report_parts.append(f"## 技術指標\n  ⚠️ 資料驗證失敗: {error}")
+            return "\n".join(report_parts)
 
         report_parts.append("## 技術指標")
         analyzer = TechnicalAnalyzer(df)
@@ -65,6 +75,8 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
 
         indicators = result["indicators"]
         report_parts.append(f"- 收盤價: {indicators['price']}")
+        if indicators.get("data_as_of"):
+            report_parts.append(f"- 技術資料截至: {indicators['data_as_of']} 收盤")
 
         # MA
         ma = indicators.get("ma", {})
@@ -87,10 +99,69 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
         if rsi:
             report_parts.append(f"- RSI(14): {rsi['RSI']}")
 
+        cci = indicators.get("cci", {})
+        if cci:
+            report_parts.append(f"- CCI(20): {cci['CCI']}")
+
         # Bollinger
         boll = indicators.get("bollinger", {})
         if boll:
             report_parts.append(f"- 布林通道: 上={boll['upper']} 中={boll['middle']} 下={boll['lower']}")
+
+        keltner = indicators.get("keltner", {})
+        if keltner:
+            report_parts.append(f"- 肯特納通道: 上={keltner['upper']} 中={keltner['middle']} 下={keltner['lower']}")
+
+        atr = indicators.get("atr", {})
+        if atr:
+            report_parts.append(f"- ATR(14): {atr['ATR']}（日均波動 {atr['ATR_pct']}%）")
+
+        regime = indicators.get("market_regime", {})
+        if regime and regime.get("adx") is not None:
+            label = "趨勢市" if regime["regime"] == "trending" else "盤整市"
+            report_parts.append(f"- 市場狀態: {label}（ADX={regime['adx']}）")
+
+        bias = indicators.get("bias", {})
+        if bias:
+            report_parts.append(f"- MA{bias['period']} 乖離: {bias['bias_pct']}%（Z={bias['zscore']}）")
+
+        trailing_stop = indicators.get("trailing_stop", {})
+        if trailing_stop:
+            report_parts.append(
+                f"- 持有移動停損: {trailing_stop['price']}（{trailing_stop['basis']}）"
+            )
+
+        adx = indicators.get("adx", {})
+        if adx and adx.get("ADX") is not None:
+            report_parts.append(
+                f"- ADX/DMI: ADX={adx['ADX']} | +DI={adx['plus_DI']} | -DI={adx['minus_DI']}"
+            )
+
+        obv = indicators.get("obv", {})
+        if obv:
+            direction = "累積" if obv["OBV_change"] > 0 else ("流出" if obv["OBV_change"] < 0 else "持平")
+            report_parts.append(f"- OBV: 近 {obv['period']} 日量能{direction}")
+
+        vr = indicators.get("vr", {})
+        if vr and vr["VR"] is not None:
+            report_parts.append(f"- VR({vr['period']}): {vr['VR']}")
+
+        support_resistance = indicators.get("support_resistance", {})
+        if support_resistance:
+            report_parts.append(
+                f"- 近 20 日支撐/壓力: {support_resistance['support']} / {support_resistance['resistance']}"
+            )
+
+        fibonacci = indicators.get("fibonacci", {})
+        if fibonacci:
+            report_parts.append(
+                f"- Fibonacci(60日): 38.2%={fibonacci['38.2%']} | 50%={fibonacci['50.0%']} | 61.8%={fibonacci['61.8%']}"
+            )
+
+        patterns = result.get("patterns", {})
+        detected_patterns = patterns.get("candlesticks", []) + patterns.get("chart_patterns", [])
+        if detected_patterns:
+            report_parts.append("- 型態候選: " + "、".join(pattern["name"] for pattern in detected_patterns))
 
         # Signals
         report_parts.append(f"\n### 訊號判讀")
@@ -153,8 +224,21 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
                 report_parts.append(f"  ⚠️ {inst_result['error']}")
                 report_parts.append("")
 
+        # 2.6 公開新聞輿情（僅輔助資訊，不納入技術與 ML 訊號）
+        report_parts.append("## 公開新聞輿情")
+        try:
+            sentiment = NewsSentimentAnalyzer().analyze(code, realtime.get("name"), limit=3)
+            report_parts.append(f"- 近 {sentiment['window_days']} 日 {sentiment['article_count']} 則：{sentiment['label']}（正面 {sentiment['positive_count']}、負面 {sentiment['negative_count']}）")
+            for article in sentiment["articles"]:
+                report_parts.append(f"  - [{article['source']}] {article['title']}")
+            report_parts.append("- 此為標題關鍵詞統計，不納入技術分數或 ML 預測。")
+        except Exception as error:
+            report_parts.append(f"- 輿情資料暫時無法取得：{error}")
+        report_parts.append("")
+
         # 3. ML 預測（含 ensemble + 大盤特徵 + 最佳參數 + 籌碼特徵）
         report_parts.append(f"## ML 預測（未來 {days_ahead} 天）")
+        market_df = load_market_df(data_dir, market_code)
 
         params = None
         params_path = os.path.join("models", f"{code}_best_params.json")
@@ -163,9 +247,8 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
                 params = json.load(f)
             report_parts.append(f"  使用調參數檔: `{params_path}`")
 
-        market_df = load_market_df(data_dir, "0050")
         if market_df is not None:
-            report_parts.append("  已納入大盤跨資產特徵（0050）")
+            report_parts.append(f"  已納入跨資產基準（{market_code}）")
 
         if institutional_df is not None:
             report_parts.append(f"  已納入法人籌碼特徵（{len(institutional_df)} 筆）")
@@ -223,9 +306,10 @@ def main():
     parser.add_argument("--code", required=True, help="股票代碼")
     parser.add_argument("--days-ahead", type=int, default=5, help="預測天數")
     parser.add_argument("--data-dir", default="data", help="資料目錄")
+    parser.add_argument("--market-code", help="可選的大盤或產業基準代碼，例如 0050")
     args = parser.parse_args()
 
-    report = generate_report(args.code, args.days_ahead, args.data_dir)
+    report = generate_report(args.code, args.days_ahead, args.data_dir, args.market_code)
     print(report)
 
 

@@ -107,7 +107,7 @@ def optimize(
     train_window: int = 120,
     step: int = 5,
     n_trials: int = 30,
-    market_code: Optional[str] = "0050",
+    market_code: Optional[str] = None,
 ) -> dict:
     import optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -217,8 +217,8 @@ def main():
     parser.add_argument("--n_trials", type=int, default=30, help="優化次數")
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--save", action="store_true", help="儲存最佳參數到 models/<code>_best_params.json")
-    parser.add_argument("--market-code", default="0050", help="大盤代理代碼")
-    parser.add_argument("--no-market", action="store_true", help="不使用跨資產特徵")
+    parser.add_argument("--market-code", help="可選的大盤或產業基準代碼，例如 0050")
+    parser.add_argument("--no-market", action="store_true", help="相容選項：不使用跨資產特徵")
     args = parser.parse_args()
 
     print(f"開始優化 {args.code}（{args.n_trials} trials）...")

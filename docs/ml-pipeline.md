@@ -24,13 +24,15 @@
 - `macd`, `macd_signal`, `macd_hist`
 - `bb_upper/middle/lower`, `bb_position` — 布林通道位置
 
-### 跨資產特徵（Phase 3 新增）
-從 `data/0050_history.csv` 載入後加入：
+### 可選跨資產特徵（Phase 3 新增）
+僅在明確傳入 `--market-code <基準代碼>` 且存在 `data/<基準代碼>_history.csv` 時加入：
 - `mkt_returns`, `mkt_ret_5/20` — 大盤多尺度報酬
 - `mkt_vol_20` — 大盤波動
 - `mkt_above_ma20` — 大盤多空旗
 - `rel_strength_1/5/20` — 個股相對大盤強弱
 - `mkt_corr_20` — 20 日滾動相關係數
+
+未指定基準時，模型只使用個股自身價量特徵。調參、回測與預測應使用相同基準設定；0050 是可選範例，不是所有個股的預設比較對象。
 
 ### 自適應視窗
 當資料 < 200 筆時，自動縮短特徵視窗（如 `ma_60` → `ma_30`），避免特徵全 NaN。

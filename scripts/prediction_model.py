@@ -17,7 +17,7 @@ class FeatureEngineer:
 
     @staticmethod
     def _add_market_features(data: pd.DataFrame, market_df: pd.DataFrame) -> pd.DataFrame:
-        """加入大盤（0050）跨資產特徵：相對強弱、市場趨勢、相關性"""
+        """加入使用者指定基準的跨資產特徵：相對強弱、市場趨勢、相關性。"""
         m = market_df[["date", "close", "volume"]].copy()
         m["date"] = pd.to_datetime(m["date"])
         m = m.rename(columns={"close": "mkt_close", "volume": "mkt_volume"})
@@ -379,13 +379,15 @@ class StockPredictor:
         }
 
 
-def load_market_df(data_dir: str, market_code: str = "0050") -> Optional[pd.DataFrame]:
-    """載入大盤資料（預設 0050），找不到回傳 None"""
+def load_market_df(data_dir: str, market_code: Optional[str] = None) -> Optional[pd.DataFrame]:
+    """載入使用者指定的市場基準資料，未指定或找不到時回傳 None。"""
+    if not market_code:
+        return None
     path = os.path.join(data_dir, f"{market_code}_history.csv")
     if not os.path.exists(path):
         return None
     try:
-        return pd.read_csv(path, parse_dates=["date"])
+        return pd.read_csv(path, parse_dates=["date"], dtype={"stock_code": str})
     except Exception:
         return None
 
@@ -396,7 +398,7 @@ def load_or_fetch(code: str, data_dir: str, min_rows: int = 200) -> pd.DataFrame
 
     df = None
     if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path, parse_dates=["date"])
+        df = pd.read_csv(csv_path, parse_dates=["date"], dtype={"stock_code": str})
 
     # 資料足夠直接回傳
     if df is not None and len(df) >= min_rows:
@@ -437,8 +439,8 @@ def main():
     parser.add_argument("--data-dir", default="data", help="資料目錄")
     parser.add_argument("--auto-fetch", action="store_true", default=True, help="資料不足時自動抓取（預設開啟）")
     parser.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", help="關閉自動抓取")
-    parser.add_argument("--market-code", default="0050", help="大盤代理代碼（預設 0050）")
-    parser.add_argument("--no-market", action="store_true", help="不使用跨資產特徵")
+    parser.add_argument("--market-code", help="可選的大盤或產業基準代碼，例如 0050")
+    parser.add_argument("--no-market", action="store_true", help="相容選項：不使用跨資產特徵")
     parser.add_argument("--params", help="載入優化參數 JSON")
     args = parser.parse_args()
 
@@ -451,7 +453,7 @@ def main():
             print(f"找不到歷史資料: {csv_path}")
             print(f"請先執行: python scripts/fetch_stock_data.py --code {args.code} --action history --save")
             return
-        df = pd.read_csv(csv_path, parse_dates=["date"])
+        df = pd.read_csv(csv_path, parse_dates=["date"], dtype={"stock_code": str})
 
     if df is None or df.empty:
         print(json.dumps({"error": "無法取得任何歷史資料"}, ensure_ascii=False, indent=2))

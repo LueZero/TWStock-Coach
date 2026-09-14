@@ -26,6 +26,9 @@
 .hermes/state.db
 .hermes/state.db-shm
 .hermes/state.db-wal
+.hermes/backups/
+.hermes/runtime/
+.hermes/state.db.auto-maintenance.lock
 
 # --- 資料/快取 ---
 data/

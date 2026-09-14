@@ -59,23 +59,32 @@ if ($hermesInPath -and -not $Force) {
     Write-Host "  跳過 (--SkipHermes)" -ForegroundColor Gray
 }
 
+if (-not $hermesExe) {
+    $knownPath = "$env:LOCALAPPDATA\hermes\hermes-agent\venv\Scripts\hermes.exe"
+    if (Test-Path $knownPath) {
+        $hermesExe = $knownPath
+    } else {
+        Write-Host "  找不到 Hermes 執行檔，無法安裝分析套件" -ForegroundColor Red
+        exit 1
+    }
+}
+
 # --- Step 2: 設定 .hermes/.env ---
 Write-Host "[2/4] 設定 API Token..." -ForegroundColor Yellow
 
 $envFile = Join-Path $ProjectHermesDir ".env"
 if (-not (Test-Path $envFile)) {
-    # 嘗試自動取得 GitHub token
     $ghToken = $null
     try {
-        $ghToken = (gh auth token 2>$null)
+        $candidateToken = (gh auth token 2>$null).Trim()
+        if ($candidateToken -match '^gho_') {
+            $ghToken = $candidateToken
+        }
     } catch {}
 
     if ($ghToken) {
-        @"
-# Auto-generated from gh auth token
-GITHUB_TOKEN=$ghToken
-"@ | Set-Content $envFile -Encoding UTF8
-        Write-Host "  已自動設定 GitHub Copilot token" -ForegroundColor Green
+        "GITHUB_TOKEN=$ghToken" | Set-Content $envFile -Encoding UTF8
+        Write-Host "  已設定 GitHub Copilot OAuth token" -ForegroundColor Green
     } else {
         Copy-Item (Join-Path $ProjectHermesDir ".env.example") $envFile
         Write-Host "  已建立 .hermes/.env（需手動填入 API key）" -ForegroundColor Yellow
@@ -90,25 +99,13 @@ Write-Host "[3/4] 安裝 Python 分析套件..." -ForegroundColor Yellow
 
 $reqFile = Join-Path $ProjectRoot "requirements.txt"
 if (Test-Path $reqFile) {
-    # 找到 hermes 的 python/uv
-    $uvExe = Get-Command uv -ErrorAction SilentlyContinue
-    $pipExe = Get-Command pip -ErrorAction SilentlyContinue
-
-    if ($uvExe) {
-        # 💡 修正：如果本地有 uv，先檢查並建立虛擬環境，避免 uv pip 報錯
-        $venvDir = Join-Path $ProjectRoot ".venv"
-        if (-not (Test-Path $venvDir)) {
-            Write-Host "  正在建立 Python 虛擬環境 (.venv)..." -ForegroundColor White
-            & uv venv --quiet
-        }
-        & uv pip install -r $reqFile --quiet 2>&1 | Out-Null
-        Write-Host "  依賴已安裝 (uv)" -ForegroundColor Green
-    } elseif ($pipExe) {
-        & pip install -r $reqFile --quiet 2>&1 | Out-Null
-        Write-Host "  依賴已安裝 (pip)" -ForegroundColor Green
-    } else {
-        Write-Host "  找不到 pip/uv，請手動執行: pip install -r requirements.txt" -ForegroundColor Yellow
+    $hermesPython = Join-Path (Split-Path $hermesExe) "python.exe"
+    if (-not (Test-Path $hermesPython)) {
+        Write-Host "  找不到 Hermes Python: $hermesPython" -ForegroundColor Red
+        exit 1
     }
+    & $hermesPython -m pip install -r $reqFile --quiet
+    Write-Host "  依賴已安裝 (Hermes Python)" -ForegroundColor Green
 } else {
     Write-Host "  requirements.txt 不存在，跳過" -ForegroundColor Gray
 }
@@ -139,7 +136,7 @@ Write-Host "或單次查詢:" -ForegroundColor White
 Write-Host "  .\run.ps1 -Query `"查台積電股價`"" -ForegroundColor Cyan
 Write-Host ""
 
-if (-not (Test-Path $envFile) -or (Get-Content $envFile | Select-String "^GITHUB_TOKEN=$").Count -gt 0) {
+if (-not (Test-Path $envFile) -or -not (Get-Content $envFile | Select-String "^[A-Z_]+=.+$").Count) {
     Write-Host "⚠️  記得設定 API key: 編輯 .hermes/.env" -ForegroundColor Yellow
 }
 

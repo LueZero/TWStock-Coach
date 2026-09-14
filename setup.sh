@@ -35,17 +35,18 @@ echo "[2/4] 設定 API Token..."
 
 ENV_FILE="$HERMES_HOME/.env"
 if [ ! -f "$ENV_FILE" ]; then
-    # 嘗試自動取得 GitHub token
     GH_TOKEN=""
     if command -v gh &>/dev/null; then
-        GH_TOKEN=$(gh auth token 2>/dev/null || true)
+        CANDIDATE_TOKEN=$(gh auth token 2>/dev/null || true)
+        case "$CANDIDATE_TOKEN" in
+            gho_*) GH_TOKEN="$CANDIDATE_TOKEN" ;;
+        esac
     fi
 
     if [ -n "$GH_TOKEN" ]; then
-        echo "# Auto-generated from gh auth token" > "$ENV_FILE"
-        echo "GITHUB_TOKEN=$GH_TOKEN" >> "$ENV_FILE"
+        echo "GITHUB_TOKEN=$GH_TOKEN" > "$ENV_FILE"
         chmod 600 "$ENV_FILE"
-        echo "  已自動設定 GitHub Copilot token"
+        echo "  已設定 GitHub Copilot OAuth token"
     else
         cp "$HERMES_HOME/.env.example" "$ENV_FILE"
         chmod 600 "$ENV_FILE"
@@ -61,15 +62,13 @@ echo "[3/4] 安裝 Python 分析套件..."
 
 REQ_FILE="$PROJECT_ROOT/requirements.txt"
 if [ -f "$REQ_FILE" ]; then
-    if command -v uv &>/dev/null; then
-        uv pip install -r "$REQ_FILE" --quiet 2>/dev/null
-        echo "  依賴已安裝 (uv)"
-    elif command -v pip &>/dev/null; then
-        pip install -r "$REQ_FILE" --quiet 2>/dev/null
-        echo "  依賴已安裝 (pip)"
-    else
-        echo "  ⚠️  找不到 pip/uv，請手動執行: pip install -r requirements.txt"
+    HERMES_PYTHON="$(dirname "$(command -v "$HERMES_EXE")")/python"
+    if [ ! -x "$HERMES_PYTHON" ]; then
+        echo "  找不到 Hermes Python: $HERMES_PYTHON"
+        exit 1
     fi
+    "$HERMES_PYTHON" -m pip install -r "$REQ_FILE" --quiet
+    echo "  依賴已安裝 (Hermes Python)"
 fi
 
 # --- Step 4: 初始化環境 ---
@@ -99,6 +98,6 @@ echo "或單次查詢:"
 echo "  ./run.sh \"查台積電股價\""
 echo ""
 
-if [ ! -f "$ENV_FILE" ] || grep -q "^GITHUB_TOKEN=$" "$ENV_FILE" 2>/dev/null; then
+if [ ! -f "$ENV_FILE" ] || ! grep -q "^[A-Z_][A-Z_]*=.+" "$ENV_FILE" 2>/dev/null; then
     echo "⚠️  記得設定 API key: 編輯 .hermes/.env"
 fi

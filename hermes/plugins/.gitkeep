@@ -4,5 +4,5 @@
 #   ├── plugin.yaml
 #   └── __init__.py
 #
-# 啟用方式：在 .hermes/config.yaml 的 plugins.enabled 加上 plugin 名稱，
+# 啟用方式：在 系統 Hermes 的 config.yaml 的 plugins.enabled 加上 plugin 名稱，
 # 並啟動前設定環境變數 HERMES_ENABLE_PROJECT_PLUGINS=true

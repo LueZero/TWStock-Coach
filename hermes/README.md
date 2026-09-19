@@ -1,7 +1,7 @@
 # Hermes 自訂資產（版控專用）
 
 此目錄存放本專案自製的 Hermes skills 與 plugins，**會跟著 git repo 版控**。
-與 `.hermes/`（runtime 目錄，含 cache/sessions/bundled skills，已 gitignore）分開管理。
+執行資料位於 Windows `%LOCALAPPDATA%/hermes`、Linux/macOS `~/.hermes`，或既有 `HERMES_HOME`。
 
 ## 目錄結構
 
@@ -20,8 +20,15 @@ hermes/
 
 ### 1. 啟用自訂 skills
 
-`.hermes/config.yaml` 已設定 `skills.external_dirs` 指向本目錄，
-**clone 後 hermes 啟動時會自動掃到**，無需額外動作。
+在系統 Hermes 的 `config.yaml` 將專案 skills 絕對路徑加入 `skills.external_dirs`，保留既有項目：
+
+```yaml
+skills:
+  external_dirs:
+    - D:/AI/TWStock-Coach/hermes/skills
+```
+
+clone 到其他位置時，請調整路徑。
 
 驗證：在 hermes CLI 內輸入 `/skills` 應該看到 `twstock-coach`。
 
@@ -41,20 +48,7 @@ export HERMES_ENABLE_PROJECT_PLUGINS=true
 hermes
 ```
 
-並在 `.hermes/config.yaml` 的 `plugins.enabled` 加上 plugin 名稱。
-
-### 3. external_dirs 路徑說明
-
-預設使用相對路徑 `../hermes/skills`（相對於 `.hermes/` 目錄）。
-若 hermes 不認相對路徑，改成絕對路徑或用環境變數：
-
-```yaml
-skills:
-  external_dirs:
-    - ${WORKSPACE_ROOT}/hermes/skills
-```
-
-並設定 `$env:WORKSPACE_ROOT = "d:\stock"`。
+並在 系統 Hermes 的 `config.yaml` 的 `plugins.enabled` 加上 plugin 名稱。
 
 ## 公開散佈（Skills Hub Tap）
 

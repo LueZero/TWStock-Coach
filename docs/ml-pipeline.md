@@ -70,7 +70,7 @@ score = direction_hit - 2.0 * mae
 - 重視方向命中率 > 報酬大小
 
 ### 輸出
-存到 `models/<code>_best_params.json`，由 `prediction_model` 與 `report_generator` 自動載入。
+存到 `data/models/<code>_best_params.json`，由 `prediction_model` 與 `report_generator` 自動載入。
 
 ## 訊號規則 (`_signal`)
 

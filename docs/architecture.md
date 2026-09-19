@@ -2,10 +2,7 @@
 
 ```
 twstock-coach/
-├── .hermes/                  # Hermes Agent 設定 (HERMES_HOME)
-│   ├── config.yaml           # 模型 / provider / terminal 設定
-│   ├── .env.example          # API Token 範本（複製為 .env 後填入）
-│   └── skills/               # 自訂 skills（如有）
+├── hermes/                   # 版控中的自訂 skills 與 plugins
 │
 ├── scripts/                  # 核心分析腳本（全部用 --code 參數，無 hardcode）
 │   ├── fetch_stock_data.py   # 抓 TWSE/TPEX 即時報價 + 歷史 K 線
@@ -18,10 +15,10 @@ twstock-coach/
 ├── data/                     # 股票歷史資料快取（gitignore）
 │   ├── 0050_history.csv      # 大盤代理（跨資產特徵來源）
 │   ├── 2330_history.csv
-│   └── ...
-│
-├── models/                   # Optuna 最佳參數（gitignore）
-│   └── <code>_best_params.json
+│   ├── models/               # 調參結果與模型
+│   ├── reports/              # 分析報告
+│   ├── backtests/            # 回測輸出
+│   └── tmp/                  # 暫存與驗證產物
 │
 ├── docs/                     # 設計文件（本資料夾）
 │   ├── architecture.md       # 專案結構（本檔）
@@ -44,7 +41,7 @@ twstock-coach/
 | `technical_analysis` | CSV 歷史檔 | JSON 指標值 + 訊號 | fetch | report |
 | `prediction_model` | CSV + 大盤 CSV + 參數 | JSON 預測 + 訊號 | fetch + tune | report + backtest |
 | `backtest` | CSV + 參數 + 止損設定 | JSON 績效（含 realistic 區塊） | fetch + tune | （CLI 直接看） |
-| `tune` | CSV + 大盤 CSV | `models/<code>_best_params.json` | fetch | prediction + backtest |
+| `tune` | CSV + 大盤 CSV | `data/models/<code>_best_params.json` | fetch | prediction + backtest |
 | `report_generator` | 股票代碼 | 統一格式報告 | 上面全部 | hermes agent |
 
 ## 資料流
@@ -71,3 +68,5 @@ fetch_stock_data ────► data/<code>_history.csv
 3. **失敗自動補救**：抓不到資料 → 自動加大天數重試（見 AGENTS.md「動態決策邏輯」）
 4. **白話優先**：agent 層負責把所有數字翻譯成人話，腳本只負責算
 5. **可選增強**：Optuna 參數、跨資產特徵都是可選，沒有也能跑
+
+Hermes 執行資料位於系統使用者目錄：Windows `%LOCALAPPDATA%/hermes`，Linux/macOS `~/.hermes`；既有 `HERMES_HOME` 優先。

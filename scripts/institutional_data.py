@@ -1,5 +1,9 @@
 """台灣股票法人籌碼資料模組 - 三大法人/融資融券/借券/集保"""
 import argparse
+if __package__:
+    from .project_paths import data_path, stock_code
+else:
+    from project_paths import data_path, stock_code
 import json
 import os
 import time
@@ -566,7 +570,7 @@ def load_institutional_df(code: str, data_dir: str = "data") -> Optional[pd.Data
     Returns:
         DataFrame or None if not found
     """
-    path = os.path.join(data_dir, f"{code}_institutional.csv")
+    path = data_path(data_dir, f"{stock_code(code)}_institutional.csv")
     if not os.path.exists(path):
         return None
     try:
@@ -578,12 +582,12 @@ def load_institutional_df(code: str, data_dir: str = "data") -> Optional[pd.Data
 
 def main():
     parser = argparse.ArgumentParser(description="台灣股票法人籌碼資料")
-    parser.add_argument("--code", required=True, help="股票代碼")
+    parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
     parser.add_argument("--action", choices=["fetch", "analyze"], default="fetch",
                         help="fetch=抓取資料, analyze=分析")
     parser.add_argument("--days", type=int, default=180, help="歷史天數")
     parser.add_argument("--save", action="store_true", help="儲存至 data/ 目錄")
-    parser.add_argument("--data-dir", default="data", help="資料儲存目錄")
+    parser.add_argument("--data-dir", type=data_path, default="data", help="專案 data/ 內的目錄（相對於專案根目錄）")
     args = parser.parse_args()
 
     if args.action == "fetch":
@@ -606,7 +610,7 @@ def main():
 
         if args.save:
             os.makedirs(args.data_dir, exist_ok=True)
-            path = os.path.join(args.data_dir, f"{args.code}_institutional.csv")
+            path = data_path(args.data_dir, f"{args.code}_institutional.csv")
             df.to_csv(path, index=False)
             print(f"\n已儲存至 {path}")
 
@@ -640,7 +644,7 @@ def main():
                 return
             # 存檔
             os.makedirs(args.data_dir, exist_ok=True)
-            path = os.path.join(args.data_dir, f"{args.code}_institutional.csv")
+            path = data_path(args.data_dir, f"{args.code}_institutional.csv")
             df.to_csv(path, index=False)
 
         analyzer = InstitutionalAnalyzer(df)

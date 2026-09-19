@@ -1,5 +1,9 @@
 """台灣股票 ML 預測模組 - XGBoost + LightGBM ensemble"""
 import argparse
+if __package__:
+    from .project_paths import data_path, stock_code
+else:
+    from project_paths import data_path, stock_code
 import json
 import os
 import warnings
@@ -381,7 +385,7 @@ class StockPredictor:
 
 def load_market_df(data_dir: str, market_code: str = "0050") -> Optional[pd.DataFrame]:
     """載入大盤資料（預設 0050），找不到回傳 None"""
-    path = os.path.join(data_dir, f"{market_code}_history.csv")
+    path = data_path(data_dir, f"{stock_code(market_code)}_history.csv")
     if not os.path.exists(path):
         return None
     try:
@@ -392,7 +396,7 @@ def load_market_df(data_dir: str, market_code: str = "0050") -> Optional[pd.Data
 
 def load_or_fetch(code: str, data_dir: str, min_rows: int = 200) -> pd.DataFrame:
     """載入歷史資料，若不存在或資料不足則自動抓取（逐步加大天數）"""
-    csv_path = os.path.join(data_dir, f"{code}_history.csv")
+    csv_path = data_path(data_dir, f"{stock_code(code)}_history.csv")
 
     df = None
     if os.path.exists(csv_path):
@@ -412,7 +416,7 @@ def load_or_fetch(code: str, data_dir: str, min_rows: int = 200) -> pd.DataFrame
         return df if df is not None else pd.DataFrame()
 
     fetcher = TWStockFetcher()
-    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(data_path(data_dir), exist_ok=True)
 
     for days in [365, 730, 1095]:
         print(f"資料不足（{len(df) if df is not None else 0} 筆），自動抓取近 {days} 天...")
@@ -431,18 +435,18 @@ def load_or_fetch(code: str, data_dir: str, min_rows: int = 200) -> pd.DataFrame
 
 def main():
     parser = argparse.ArgumentParser(description="台灣股票 ML 預測")
-    parser.add_argument("--code", required=True, help="股票代碼")
+    parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
     parser.add_argument("--days_ahead", type=int, default=5, help="預測天數")
     parser.add_argument("--model", default="xgboost", help="模型類型")
-    parser.add_argument("--data-dir", default="data", help="資料目錄")
+    parser.add_argument("--data-dir", type=data_path, default="data", help="專案 data/ 內的目錄（相對於專案根目錄）")
     parser.add_argument("--auto-fetch", action="store_true", default=True, help="資料不足時自動抓取（預設開啟）")
     parser.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", help="關閉自動抓取")
-    parser.add_argument("--market-code", default="0050", help="大盤代理代碼（預設 0050）")
+    parser.add_argument("--market-code", type=stock_code, default="0050", help="大盤代理代碼（預設 0050）")
     parser.add_argument("--no-market", action="store_true", help="不使用跨資產特徵")
-    parser.add_argument("--params", help="載入優化參數 JSON")
+    parser.add_argument("--params", type=data_path, help="載入優化參數 JSON")
     args = parser.parse_args()
 
-    csv_path = os.path.join(args.data_dir, f"{args.code}_history.csv")
+    csv_path = data_path(args.data_dir, f"{args.code}_history.csv")
 
     if args.auto_fetch:
         df = load_or_fetch(args.code, args.data_dir)

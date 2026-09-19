@@ -1,5 +1,9 @@
 """台灣股票技術分析模組"""
 import argparse
+if __package__:
+    from .project_paths import data_path, stock_code
+else:
+    from project_paths import data_path, stock_code
 import json
 import os
 
@@ -173,13 +177,13 @@ class TechnicalAnalyzer:
 
 def main():
     parser = argparse.ArgumentParser(description="台灣股票技術分析")
-    parser.add_argument("--code", required=True, help="股票代碼")
+    parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
     parser.add_argument("--indicators", default="all", help="指標類型")
-    parser.add_argument("--data-dir", default="data", help="資料目錄")
+    parser.add_argument("--data-dir", type=data_path, default="data", help="專案 data/ 內的目錄（相對於專案根目錄）")
     args = parser.parse_args()
 
     # 讀取歷史資料
-    csv_path = os.path.join(args.data_dir, f"{args.code}_history.csv")
+    csv_path = data_path(args.data_dir, f"{args.code}_history.csv")
     if not os.path.exists(csv_path):
         print(f"找不到歷史資料: {csv_path}")
         print(f"請先執行: python scripts/fetch_stock_data.py --code {args.code} --action history --save")

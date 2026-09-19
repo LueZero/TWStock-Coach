@@ -25,6 +25,12 @@ metadata:
 ### 0. 環境前置
 所有腳本位於 repo 的 `scripts/` 目錄，使用專案 Python 環境執行。預設 cwd 已是 repo 根目錄。
 
+### 產出位置（必須遵守）
+
+所有專案產物須寫入本專案 `data/`，包含下載、報告、圖片、模型、回測、日誌與暫存檔。CSV 放 `data/`，模型放 `data/models/`，報告／圖片放 `data/reports/`，回測放 `data/backtests/`，暫存／驗證檔放 `data/tmp/`，快取與日誌放 `data/cache/`、`data/logs/`。先定位 repo 根目錄並建立必要子目錄；stdout 重新導向也須使用這些路徑。不得放到 Hermes 使用者目錄或系統暫存目錄。
+
+`--data-dir` 僅接受專案 `data/` 內的位置；相對路徑以 repo 根目錄解析。自訂資料目錄時，調參與報告使用相同的 `--data-dir`，參數位於其 `models/` 子目錄。Hermes 本身的設定與對話仍由系統使用者目錄管理。
+
 ### 1. 識別股票代碼
 若使用者只給公司名，先查對照表轉成代碼：
 

@@ -57,15 +57,12 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-### 2. 設定 LLM API Token
+### 2. 設定 Hermes 登入與模型
 
-```bash
-cp .hermes/.env.example .hermes/.env
-# 編輯 .env 填入任一 provider 的 token：
-#   GitHub Copilot:  gh auth token 的輸出
-#   OpenRouter:      https://openrouter.ai/keys
-#   Anthropic:       https://console.anthropic.com/
-```
+安裝腳本會執行 `hermes setup`；日後也可自行執行以調整登入與模型。
+沿用既有 `HERMES_HOME`；未設定時，Windows 使用 `%LOCALAPPDATA%/hermes`，Linux/macOS 使用 `~/.hermes`。
+專案不再建立 `.hermes/`，OAuth 登入不必提供 `.env`。
+自訂 skills 設定見 [hermes/README.md](hermes/README.md)。
 
 ### 3. 啟動助手
 
@@ -90,7 +87,7 @@ cp .hermes/.env.example .hermes/.env
 | 「預測鴻海未來 5 天走勢」 | ML 模型給預測報酬 + 機率 + BUY/HOLD/SELL 訊號 |
 | 「產生聯發科完整投資報告」 | 即時報價 + 指標 + ML + ATR 止損價，全部白話翻譯 |
 | 「2308 回測一下」 | Walk-forward 回測 + Sharpe / MDD / 勝率 |
-| 「調 2454 的參數」 | Optuna 30 trials，存最佳參數到 `models/` |
+| 「調 2454 的參數」 | Optuna 30 trials，存最佳參數到 `data/models/` |
 
 ### 進階：直接呼叫腳本
 
@@ -185,3 +182,7 @@ python scripts/tune.py --code 2330 --n_trials 30 --save
 - [Hermes Agent](https://github.com/NousResearch/hermes-agent) — 提供穩定的 agent 框架
 - TWSE / TPEX — 提供公開股價 API
 - XGBoost / LightGBM / Optuna 開源社群
+
+## 專案產出位置
+
+所有任務產物統一存於專案 `data/`：CSV 放根層，模型放 `data/models/`，報告／圖片放 `data/reports/`，回測放 `data/backtests/`，暫存放 `data/tmp/`，快取及日誌放 `data/cache/`、`data/logs/`。腳本路徑不受啟動位置影響，`--data-dir` 僅可指定 `data/` 內的目錄。Hermes 本身的設定與對話仍在系統使用者目錄。

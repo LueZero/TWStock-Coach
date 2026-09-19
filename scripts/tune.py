@@ -8,6 +8,10 @@
 - 優化過程紀錄
 """
 import argparse
+if __package__:
+    from .project_paths import data_path, stock_code
+else:
+    from project_paths import data_path, stock_code
 import json
 import os
 import sys
@@ -210,14 +214,14 @@ def optimize(
 
 def main():
     parser = argparse.ArgumentParser(description="Optuna 超參數調校")
-    parser.add_argument("--code", required=True, help="股票代碼")
+    parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
     parser.add_argument("--days_ahead", type=int, default=5)
     parser.add_argument("--train_window", type=int, default=120)
     parser.add_argument("--step", type=int, default=5)
     parser.add_argument("--n_trials", type=int, default=30, help="優化次數")
-    parser.add_argument("--data-dir", default="data")
-    parser.add_argument("--save", action="store_true", help="儲存最佳參數到 models/<code>_best_params.json")
-    parser.add_argument("--market-code", default="0050", help="大盤代理代碼")
+    parser.add_argument("--data-dir", type=data_path, default="data")
+    parser.add_argument("--save", action="store_true", help="儲存最佳參數到 data/models/<code>_best_params.json")
+    parser.add_argument("--market-code", type=stock_code, default="0050", help="大盤代理代碼")
     parser.add_argument("--no-market", action="store_true", help="不使用跨資產特徵")
     args = parser.parse_args()
 
@@ -232,8 +236,8 @@ def main():
                      ensure_ascii=False, indent=2))
 
     if args.save and "best_params" in result:
-        os.makedirs("models", exist_ok=True)
-        path = f"models/{args.code}_best_params.json"
+        os.makedirs(data_path(args.data_dir, "models"), exist_ok=True)
+        path = data_path(args.data_dir, "models", f"{args.code}_best_params.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(result["best_params"], f, ensure_ascii=False, indent=2)
         print(f"\n最佳參數已儲存至: {path}")

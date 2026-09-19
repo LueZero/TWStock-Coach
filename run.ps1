@@ -16,7 +16,6 @@ param(
 )
 
 $ProjectRoot = $PSScriptRoot
-$env:HERMES_HOME = Join-Path $ProjectRoot ".hermes"
 Set-Location $ProjectRoot
 
 # Windows: 指定 Git Bash 作為 terminal shell（避免 WSL 錯誤）
@@ -35,12 +34,6 @@ if (-not $hermesExe) {
         Write-Host "hermes 未安裝，請先執行: .\setup.ps1" -ForegroundColor Red
         exit 1
     }
-}
-
-# 確認 .env 存在
-if (-not (Test-Path "$env:HERMES_HOME\.env")) {
-    Write-Host "API key 未設定，請先執行: .\setup.ps1" -ForegroundColor Red
-    exit 1
 }
 
 if ($Query) {

@@ -1,31 +1,5 @@
-# --- Hermes 執行期產生的檔案（敏感/臨時，不該入版控）---
-# 注意：自訂 skills/plugins 放在 repo 根的 hermes/ 目錄，會入版控。
-# .hermes/ 是 runtime home，存放 bundled skills、session、cache 等，全部排除。
-.hermes/.env
-.hermes/auth.json
-.hermes/auth.lock
-.hermes/.hermes_history
-.hermes/.update_check
-.hermes/.skills_prompt_snapshot.json
-.hermes/.skills_prompt_snapshot.json.lock
-.hermes/cache/
-.hermes/sessions/
-.hermes/logs/
-.hermes/memories/
-.hermes/cron/
-.hermes/hooks/
-.hermes/sandboxes/
-.hermes/pairing/
-.hermes/image_cache/
-.hermes/audio_cache/
-.hermes/skills/
-.hermes/plugins/
-.hermes/SOUL.md
-.hermes/models_dev_cache.json
-.hermes/ollama_cloud_models_cache.json
-.hermes/state.db
-.hermes/state.db-shm
-.hermes/state.db-wal
+# Hermes runtime belongs in the user directory
+.hermes/
 
 # --- 資料/快取 ---
 data/

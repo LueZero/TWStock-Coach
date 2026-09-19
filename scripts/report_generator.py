@@ -1,5 +1,9 @@
 """台灣股票綜合報告產生器"""
 import argparse
+if __package__:
+    from .project_paths import data_path, stock_code
+else:
+    from project_paths import data_path, stock_code
 import json
 import os
 import sys
@@ -16,6 +20,8 @@ from institutional_data import InstitutionalAnalyzer, load_institutional_df
 
 def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> str:
     """產生完整投資報告"""
+    data_dir = data_path(data_dir)
+    code = stock_code(code)
     report_parts = []
     report_parts.append(f"# 📊 股票分析報告 - {code}")
     report_parts.append(f"生成時間: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
@@ -38,7 +44,7 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
     report_parts.append("")
 
     # 2. 技術分析
-    csv_path = os.path.join(data_dir, f"{code}_history.csv")
+    csv_path = data_path(data_dir, f"{stock_code(code)}_history.csv")
     has_history = os.path.exists(csv_path)
 
     if not has_history:
@@ -47,7 +53,7 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
         import pandas as pd
         df = fetcher.get_history(code, 365)
         if not df.empty:
-            os.makedirs(data_dir, exist_ok=True)
+            os.makedirs(data_path(data_dir), exist_ok=True)
             df.to_csv(csv_path, index=False)
             has_history = True
             report_parts.append(f"  已取得 {len(df)} 筆資料")
@@ -157,7 +163,7 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
         report_parts.append(f"## ML 預測（未來 {days_ahead} 天）")
 
         params = None
-        params_path = os.path.join("models", f"{code}_best_params.json")
+        params_path = data_path(data_dir, "models", f"{stock_code(code)}_best_params.json")
         if os.path.exists(params_path):
             with open(params_path, encoding="utf-8") as f:
                 params = json.load(f)
@@ -220,9 +226,9 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
 
 def main():
     parser = argparse.ArgumentParser(description="台灣股票綜合報告")
-    parser.add_argument("--code", required=True, help="股票代碼")
+    parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
     parser.add_argument("--days-ahead", type=int, default=5, help="預測天數")
-    parser.add_argument("--data-dir", default="data", help="資料目錄")
+    parser.add_argument("--data-dir", type=data_path, default="data", help="專案 data/ 內的目錄（相對於專案根目錄）")
     args = parser.parse_args()
 
     report = generate_report(args.code, args.days_ahead, args.data_dir)

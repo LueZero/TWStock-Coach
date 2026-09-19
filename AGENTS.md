@@ -1,6 +1,14 @@
 # 台股小教練 TWStock-Coach - Hermes Agent 工作區上下文
 # 此檔案會在 hermes 啟動時自動載入
 
+## 產出檔案與資料的位置
+
+- 腳本、代理人與技能產生的專案資料或檔案，一律存於本專案根目錄的 `data/` 下；不可寫到目前工作目錄、專案根目錄、系統暫存目錄或 Hermes 使用者目錄。
+- 行情與籌碼 CSV：`data/`；模型及調參結果：`data/models/`；報告及圖表：`data/reports/`；回測結果：`data/backtests/`；暫存、驗證產物與工作備份：`data/tmp/`；專案快取及執行紀錄：`data/cache/`、`data/logs/`。
+- 先定位專案根目錄，再建立必要的子目錄。重新導向 stdout、匯出圖片、工具下載與臨時測試檔也須遵守；不得使用 `../` 或符號連結繞過範圍。
+- 腳本的 `--data-dir` 與 `--params` 相對路徑以專案根目錄解析，且須位於 `data/` 內。例如 `--data-dir data/experiments/run1`；該次調參模型寫入其 `models/` 子目錄，報告以同一個 `--data-dir` 讀取。
+- 此規則適用於任務產物；專案原始碼、代理人／技能定義、維護文件仍留在原位置。Hermes 自身登入、設定與對話資料仍由系統使用者目錄管理。
+
 ## 角色定義
 
 你是一位專業的台灣股票投資分析助手，具備以下能力：
@@ -38,7 +46,7 @@ python scripts/report_generator.py --code <股票代碼> --days-ahead 5
 ```bash
 # 固定止損
 python scripts/backtest.py --code <股票代碼> --stop-loss 0.05
-python scripts/backtest.py --code <股票代碼> --params models/<code>_best_params.json --stop-loss 0.05
+python scripts/backtest.py --code <股票代碼> --params data/models/<code>_best_params.json --stop-loss 0.05
 
 # ATR 動態止損（推薦：自動依股票波動調整止損幅度，2.0 倍 ATR）
 python scripts/backtest.py --code <股票代碼> --stop-loss-atr 2.0
@@ -119,7 +127,7 @@ python scripts/institutional_data.py --code <股票代碼> --action analyze
 1. 抓取即時報價 + 技術指標
 2. 載入籌碼資料 `data/<code>_institutional.csv`（若存在）作法人特徵 + 獨立籌碼面報告
 3. 載入大盤代理 `data/0050_history.csv`（若存在）作跨資產特徵
-4. 載入 `models/<code>_best_params.json`（若存在）作 Optuna 調過的最佳參數
+4. 載入 `data/models/<code>_best_params.json`（若存在）作 Optuna 調過的最佳參數
 5. 用 XGB+LGB ensemble 預測未來 N 天（含籌碼特徵）
 6. 給出 BUY/HOLD/SELL 訊號 + 建議止損價（現價 × 0.95）
 

@@ -5,7 +5,6 @@
 #   ./run.sh "查台積電股價"  # 單次查詢
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
-export HERMES_HOME="$PROJECT_ROOT/.hermes"
 cd "$PROJECT_ROOT"
 
 # 確認 hermes 存在
@@ -18,12 +17,6 @@ elif [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ]; then
     HERMES_EXE="$HOME/.hermes/hermes-agent/venv/bin/hermes"
 else
     echo "hermes 未安裝，請先執行: ./setup.sh"
-    exit 1
-fi
-
-# 確認 .env 存在
-if [ ! -f "$HERMES_HOME/.env" ]; then
-    echo "API key 未設定，請先執行: ./setup.sh"
     exit 1
 fi
 

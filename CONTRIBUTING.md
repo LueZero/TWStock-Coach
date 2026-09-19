@@ -257,3 +257,9 @@ feat: 加入 USD/TWD 匯率作為跨資產特徵
 ## 致謝
 
 每一位貢獻者都會列在 README 的致謝區與 Release Notes。再次感謝你的投入！🙏
+
+## 產出路徑規範
+
+新增腳本時，使用 `scripts/project_paths.py` 的 `data_path()` 定位及檢查讀寫路徑；任務產物限於專案 `data/`。不要使用依賴 cwd 的相對輸出，也不要另建根層 `models/`、`reports/` 或使用系統暫存位置。測試暫存目錄須建於 `data/tmp/`。
+
+離線路徑測試：`python -B scripts/test_project_paths.py`。

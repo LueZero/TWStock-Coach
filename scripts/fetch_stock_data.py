@@ -1,5 +1,9 @@
 """台灣股票資料抓取模組 - TWSE/TPEX API"""
 import argparse
+if __package__:
+    from .project_paths import data_path, stock_code
+else:
+    from project_paths import data_path, stock_code
 import json
 import os
 import time
@@ -131,11 +135,11 @@ class TWStockFetcher:
 
 def main():
     parser = argparse.ArgumentParser(description="台灣股票資料抓取")
-    parser.add_argument("--code", required=True, help="股票代碼")
+    parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
     parser.add_argument("--action", choices=["realtime", "history"], default="realtime")
     parser.add_argument("--days", type=int, default=180, help="歷史天數")
     parser.add_argument("--save", action="store_true", help="儲存至 data/ 目錄")
-    parser.add_argument("--data-dir", default="data", help="資料儲存目錄")
+    parser.add_argument("--data-dir", type=data_path, default="data", help="專案 data/ 內的目錄（相對於專案根目錄）")
     args = parser.parse_args()
 
     fetcher = TWStockFetcher()
@@ -155,7 +159,7 @@ def main():
 
         if args.save:
             os.makedirs(args.data_dir, exist_ok=True)
-            path = os.path.join(args.data_dir, f"{args.code}_history.csv")
+            path = data_path(args.data_dir, f"{args.code}_history.csv")
             df.to_csv(path, index=False)
             print(f"\n已儲存至 {path}")
 

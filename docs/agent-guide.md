@@ -3,12 +3,12 @@
 ## Hermes Agent 設定
 
 ### 啟動流程
-1. `run.ps1` / `run.sh` 設定 `HERMES_HOME=./.hermes`
-2. Hermes 讀取 `.hermes/config.yaml`（provider / model / terminal）
+1. `run.ps1` / `run.sh` 沿用既有 `HERMES_HOME`，否則使用系統使用者預設目錄
+2. Hermes 讀取 系統 Hermes 的 `config.yaml`（provider / model / terminal）
 3. Hermes **自動載入** `AGENTS.md` 作為工作區上下文
 4. 進入對話模式
 
-### 模型選擇（`.hermes/config.yaml`）
+### 模型選擇（系統 Hermes 的 `config.yaml`）
 ```yaml
 provider: copilot      # 或 openrouter, anthropic
 model: gpt-4.1         # 或其他支援的模型
@@ -82,7 +82,7 @@ Windows 使用 PowerShell 啟動，但 hermes 透過 Git Bash 執行腳本。
 編輯 `AGENTS.md` 的「白話解讀指南」名詞表。
 
 ### 換 LLM provider
-編輯 `.hermes/config.yaml` 的 `provider` + `model` 欄位，並更新 `.hermes/.env`。
+編輯 系統 Hermes 的 `config.yaml` 的 `provider` + `model` 欄位，並更新 系統 Hermes 的 `.env`。
 
 ### 加新工具
 1. 在 `scripts/` 新增 Python 腳本（接受 `--code` 參數）

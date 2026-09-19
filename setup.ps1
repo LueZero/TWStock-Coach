@@ -3,7 +3,7 @@
     台灣股票投資助手 - Windows 一鍵安裝
 .DESCRIPTION
     安裝 Hermes Agent 並設定專案環境
-    所有設定存在專案的 .hermes/ 目錄下
+    設定使用 Hermes 系統使用者目錄
 #>
 param(
     [switch]$SkipHermes,    # 跳過 hermes 安裝（已安裝時）
@@ -12,7 +12,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
-$ProjectHermesDir = Join-Path $ProjectRoot ".hermes"
 
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Cyan
@@ -59,30 +58,12 @@ if ($hermesInPath -and -not $Force) {
     Write-Host "  跳過 (--SkipHermes)" -ForegroundColor Gray
 }
 
-# --- Step 2: 設定 .hermes/.env ---
-Write-Host "[2/4] 設定 API Token..." -ForegroundColor Yellow
-
-$envFile = Join-Path $ProjectHermesDir ".env"
-if (-not (Test-Path $envFile)) {
-    # 嘗試自動取得 GitHub token
-    $ghToken = $null
-    try {
-        $ghToken = (gh auth token 2>$null)
-    } catch {}
-
-    if ($ghToken) {
-        @"
-# Auto-generated from gh auth token
-GITHUB_TOKEN=$ghToken
-"@ | Set-Content $envFile -Encoding UTF8
-        Write-Host "  已自動設定 GitHub Copilot token" -ForegroundColor Green
-    } else {
-        Copy-Item (Join-Path $ProjectHermesDir ".env.example") $envFile
-        Write-Host "  已建立 .hermes/.env（需手動填入 API key）" -ForegroundColor Yellow
-        Write-Host "  編輯: $envFile" -ForegroundColor Yellow
-    }
+Write-Host "[2/4] 設定系統 Hermes..."
+if ($hermesExe) {
+    & $hermesExe setup
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } else {
-    Write-Host "  .env 已存在，跳過" -ForegroundColor Green
+    Write-Host "請安裝 Hermes 後執行 hermes setup"
 }
 
 # --- Step 3: 安裝 Python 依賴 ---
@@ -138,8 +119,4 @@ Write-Host ""
 Write-Host "或單次查詢:" -ForegroundColor White
 Write-Host "  .\run.ps1 -Query `"查台積電股價`"" -ForegroundColor Cyan
 Write-Host ""
-
-if (-not (Test-Path $envFile) -or (Get-Content $envFile | Select-String "^GITHUB_TOKEN=$").Count -gt 0) {
-    Write-Host "⚠️  記得設定 API key: 編輯 .hermes/.env" -ForegroundColor Yellow
-}
 

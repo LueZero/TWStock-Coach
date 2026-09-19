@@ -6,6 +6,10 @@
 - 交易次數 / 勝率
 """
 import argparse
+if __package__:
+    from .project_paths import data_path, stock_code
+else:
+    from project_paths import data_path, stock_code
 import json
 import os
 import sys
@@ -289,15 +293,15 @@ def walk_forward_backtest(
 
 def main():
     parser = argparse.ArgumentParser(description="Walk-forward 回測")
-    parser.add_argument("--code", required=True, help="股票代碼")
+    parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
     parser.add_argument("--days_ahead", type=int, default=5, help="預測天數")
     parser.add_argument("--train_window", type=int, default=120, help="訓練視窗")
     parser.add_argument("--step", type=int, default=5, help="滑動步長")
     parser.add_argument("--cost", type=float, default=0.005, help="單次交易成本")
-    parser.add_argument("--data-dir", default="data", help="資料目錄")
-    parser.add_argument("--params", help="從 JSON 載入優化過的超參數（models/<code>_best_params.json）")
+    parser.add_argument("--data-dir", type=data_path, default="data", help="專案 data/ 內的目錄（相對於專案根目錄）")
+    parser.add_argument("--params", type=data_path, help="從 JSON 載入優化過的超參數（data/models/<code>_best_params.json）")
     parser.add_argument("--no-ensemble", action="store_true", help="只用 XGBoost（關閉 ensemble）")
-    parser.add_argument("--market-code", default="0050", help="大盤代理代碼（預設 0050）")
+    parser.add_argument("--market-code", type=stock_code, default="0050", help="大盤代理代碼（預設 0050）")
     parser.add_argument("--no-market", action="store_true", help="不使用跨資產特徵")
     parser.add_argument("--stop-loss", type=float, default=0.0, help="固定止損幅度（0.05 = 5%）")
     parser.add_argument("--take-profit", type=float, default=0.0, help="固定止盈幅度（0.08 = 8%）")

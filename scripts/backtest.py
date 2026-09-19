@@ -306,7 +306,7 @@ def main():
     parser.add_argument("--stop-loss", type=float, default=0.0, help="固定止損幅度（0.05 = 5%）")
     parser.add_argument("--take-profit", type=float, default=0.0, help="固定止盈幅度（0.08 = 8%）")
     parser.add_argument("--stop-loss-atr", type=float, default=0.0, help="ATR 動態止損倍數（例 2.0）。設定後覆蓋 --stop-loss")
-    parser.add_argument("--position-size", type=float, default=0.1, help="每筆交易資金比例（0.1=10%）供 realistic 模型使用")
+    parser.add_argument("--position-size", type=float, default=0.1, help="每筆交易資金比例（0.1=10%%）供 realistic 模型使用")
     args = parser.parse_args()
 
     df = load_or_fetch(args.code, args.data_dir, min_rows=args.train_window + 60)

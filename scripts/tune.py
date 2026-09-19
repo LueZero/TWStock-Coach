@@ -111,7 +111,7 @@ def optimize(
     train_window: int = 120,
     step: int = 5,
     n_trials: int = 30,
-    market_code: Optional[str] = "0050",
+    market_code: Optional[str] = None,
 ) -> dict:
     import optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)

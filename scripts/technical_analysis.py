@@ -10,12 +10,29 @@ import os
 import numpy as np
 import pandas as pd
 
+try:
+    from .technical.controller import TechnicalAnalysisController
+    from .technical.views import TechnicalAnalysisView
+except ImportError:
+    from technical.controller import TechnicalAnalysisController
+    from technical.views import TechnicalAnalysisView
+
+
+def validate_history_code(df: pd.DataFrame, code: str) -> None:
+    """若歷史資料含來源代碼標記，確認其與使用者請求一致。"""
+    if "stock_code" not in df:
+        return
+    stored_codes = {str(value).strip() for value in df["stock_code"].dropna().unique()}
+    if stored_codes and stored_codes != {str(code).strip()}:
+        raise ValueError(f"歷史資料代碼不符：要求 {code}，檔案標記為 {', '.join(sorted(stored_codes))}")
+
 
 class TechnicalAnalyzer:
     """技術指標計算器"""
 
     def __init__(self, df: pd.DataFrame):
         self.df = df.copy()
+        self.controller = TechnicalAnalysisController(self.df)
 
     def ma(self, periods=(5, 10, 20, 60)):
         """移動平均線"""
@@ -86,6 +103,76 @@ class TechnicalAnalyzer:
             "close": round(self.df["close"].iloc[-1], 2),
         }
 
+    def atr(self, period=14):
+        """平均真實波幅，用於衡量日常波動與止損距離"""
+        if len(self.df) < period + 1:
+            return {}
+        previous_close = self.df["close"].shift(1)
+        true_range = pd.concat([
+            self.df["high"] - self.df["low"],
+            (self.df["high"] - previous_close).abs(),
+            (self.df["low"] - previous_close).abs(),
+        ], axis=1).max(axis=1)
+        atr_value = true_range.ewm(alpha=1 / period, adjust=False, min_periods=period).mean().iloc[-1]
+        price = self.df["close"].iloc[-1]
+        return {
+            "ATR": round(atr_value, 2),
+            "ATR_pct": round(atr_value / price * 100, 2) if price else 0,
+        }
+
+    def adx(self, period=14):
+        """ADX/DMI 趨勢強度與方向指標"""
+        if len(self.df) < period * 2:
+            return {}
+        high_diff = self.df["high"].diff()
+        low_diff = -self.df["low"].diff()
+        plus_dm = high_diff.where((high_diff > low_diff) & (high_diff > 0), 0.0)
+        minus_dm = low_diff.where((low_diff > high_diff) & (low_diff > 0), 0.0)
+        previous_close = self.df["close"].shift(1)
+        true_range = pd.concat([
+            self.df["high"] - self.df["low"],
+            (self.df["high"] - previous_close).abs(),
+            (self.df["low"] - previous_close).abs(),
+        ], axis=1).max(axis=1)
+        smoothed_tr = true_range.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+        plus_di = 100 * plus_dm.ewm(alpha=1 / period, adjust=False, min_periods=period).mean() / smoothed_tr
+        minus_di = 100 * minus_dm.ewm(alpha=1 / period, adjust=False, min_periods=period).mean() / smoothed_tr
+        directional_sum = plus_di + minus_di
+        dx = (100 * (plus_di - minus_di).abs() / directional_sum).where(directional_sum != 0)
+        adx_value = dx.ewm(alpha=1 / period, adjust=False, min_periods=period).mean().iloc[-1]
+        return {
+            "ADX": round(adx_value, 1) if pd.notna(adx_value) else None,
+            "plus_DI": round(plus_di.iloc[-1], 1),
+            "minus_DI": round(minus_di.iloc[-1], 1),
+        }
+
+    def obv(self, period=20):
+        """能量潮，觀察量價累積方向"""
+        if len(self.df) < period + 1:
+            return {}
+        direction = np.sign(self.df["close"].diff()).fillna(0)
+        obv_series = (direction * self.df["volume"]).cumsum()
+        change = obv_series.iloc[-1] - obv_series.iloc[-period]
+        return {
+            "OBV": int(obv_series.iloc[-1]),
+            "OBV_change": int(change),
+            "period": period,
+        }
+
+    def support_resistance(self, period=20):
+        """近期區間支撐與壓力位"""
+        if len(self.df) < period:
+            return {}
+        support = self.df["low"].rolling(period).min().iloc[-1]
+        resistance = self.df["high"].rolling(period).max().iloc[-1]
+        price = self.df["close"].iloc[-1]
+        return {
+            "support": round(support, 2),
+            "resistance": round(resistance, 2),
+            "support_distance_pct": round((price / support - 1) * 100, 2) if support else 0,
+            "resistance_distance_pct": round((resistance / price - 1) * 100, 2) if price else 0,
+        }
+
     def volume_analysis(self):
         """成交量分析"""
         if len(self.df) < 5:
@@ -100,79 +187,18 @@ class TechnicalAnalyzer:
 
     def all_indicators(self):
         """計算所有指標"""
-        return {
-            "price": round(self.df["close"].iloc[-1], 2),
-            "ma": self.ma(),
-            "kd": self.kd(),
-            "macd": self.macd(),
-            "rsi": self.rsi(),
-            "bollinger": self.bollinger(),
-            "volume": self.volume_analysis(),
-        }
+        return self.controller.calculator.all()
 
     def generate_signals(self):
         """產生交易訊號"""
-        signals = []
-        indicators = self.all_indicators()
-        price = indicators["price"]
-
-        # MA 訊號
-        ma_data = indicators.get("ma", {})
-        if ma_data.get("MA5") and ma_data.get("MA20"):
-            if ma_data["MA5"] > ma_data["MA20"]:
-                signals.append(("MA", "多頭排列", "bullish"))
-            else:
-                signals.append(("MA", "空頭排列", "bearish"))
-
-        # KD 訊號
-        kd_data = indicators.get("kd", {})
-        if kd_data:
-            if kd_data["K"] > 80:
-                signals.append(("KD", f"超買區 K={kd_data['K']}", "bearish"))
-            elif kd_data["K"] < 20:
-                signals.append(("KD", f"超賣區 K={kd_data['K']}", "bullish"))
-            else:
-                signals.append(("KD", f"中性 K={kd_data['K']}", "neutral"))
-
-        # MACD 訊號
-        macd_data = indicators.get("macd", {})
-        if macd_data:
-            if macd_data["OSC"] > 0:
-                signals.append(("MACD", "正值偏多", "bullish"))
-            else:
-                signals.append(("MACD", "負值偏空", "bearish"))
-
-        # RSI 訊號
-        rsi_data = indicators.get("rsi", {})
-        if rsi_data:
-            rsi_val = rsi_data["RSI"]
-            if rsi_val > 70:
-                signals.append(("RSI", f"超買 {rsi_val}", "bearish"))
-            elif rsi_val < 30:
-                signals.append(("RSI", f"超賣 {rsi_val}", "bullish"))
-            else:
-                signals.append(("RSI", f"中性 {rsi_val}", "neutral"))
-
-        # 布林訊號
-        boll = indicators.get("bollinger", {})
-        if boll:
-            if price >= boll["upper"]:
-                signals.append(("布林", "觸及上軌", "bearish"))
-            elif price <= boll["lower"]:
-                signals.append(("布林", "觸及下軌", "bullish"))
-
-        # 綜合判斷
-        bullish = sum(1 for _, _, s in signals if s == "bullish")
-        bearish = sum(1 for _, _, s in signals if s == "bearish")
-
-        if bullish > bearish + 1:
-            overall = "偏多"
-        elif bearish > bullish + 1:
-            overall = "偏空"
-        else:
-            overall = "中性"
-
-        return {"signals": signals, "overall": overall, "indicators": indicators}
+        result = self.controller.analyze()
+        return {
+            "signals": [(signal.category, signal.description, signal.direction) for signal in result.signals],
+            "overall": result.overall,
+            "indicators": result.indicators,
+            "patterns": result.patterns,
+            "summary": result.summary,
+        }
 
 
 def main():
@@ -189,15 +215,17 @@ def main():
         print(f"請先執行: python scripts/fetch_stock_data.py --code {args.code} --action history --save")
         return
 
-    df = pd.read_csv(csv_path, parse_dates=["date"])
-    analyzer = TechnicalAnalyzer(df)
-
-    if args.indicators == "all":
-        result = analyzer.generate_signals()
-        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    df = pd.read_csv(csv_path, parse_dates=["date"], dtype={"stock_code": str})
+    try:
+        validate_history_code(df, args.code)
+    except ValueError as error:
+        print(f"資料驗證失敗: {error}")
+        return
+    result = TechnicalAnalysisController(df).analyze()
+    if args.indicators == "markdown":
+        print(TechnicalAnalysisView.markdown(result))
     else:
-        indicators = analyzer.all_indicators()
-        print(json.dumps(indicators, ensure_ascii=False, indent=2))
+        print(TechnicalAnalysisView.json(result))
 
 
 if __name__ == "__main__":

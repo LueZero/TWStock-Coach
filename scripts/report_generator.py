@@ -13,12 +13,17 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
 
 from fetch_stock_data import TWStockFetcher
-from technical_analysis import TechnicalAnalyzer
+from technical_analysis import TechnicalAnalyzer, validate_history_code
 from prediction_model import StockPredictor, load_market_df
 from institutional_data import InstitutionalAnalyzer, load_institutional_df
+from sentiment_analysis import NewsSentimentAnalyzer
+from fundamental_analysis import FundamentalFetcher, FundamentalAnalyzer
+import etf_analysis
+from day_trading_analysis import DayTradingFetcher, DayTradingAnalyzer
 
 
-def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> str:
+def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data", market_code: str | None = None,
+                     include_daytrade: bool = False) -> str:
     """產生完整投資報告"""
     data_dir = data_path(data_dir)
     code = stock_code(code)
@@ -43,6 +48,40 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
         report_parts.append(f"  ⚠️ {realtime['error']}")
     report_parts.append("")
 
+    # 1.5 當沖風控參考（選項，僅查詢當下即時快照）
+    if include_daytrade:
+        report_parts.append("## 當沖風控參考（即時快照，非逐筆委託簿）")
+        try:
+            dt_fetcher = DayTradingFetcher()
+            snapshot = dt_fetcher.fetch_snapshot(code)
+            if snapshot is None:
+                report_parts.append(f"  ⚠️ 找不到 {code} 的即時報價，無法做當沖快照")
+            else:
+                eligibility = dt_fetcher.fetch_daytrade_eligibility(code)
+                dt_result = DayTradingAnalyzer(snapshot, eligibility).analyze()
+                report_parts.append(
+                    f"- 今日振幅: {dt_result.get('amplitude_pct', 'N/A')}% "
+                    f"| 現價區間位置: {dt_result.get('range_position', 'N/A')}（0=今日最低、1=今日最高）"
+                )
+                report_parts.append(
+                    f"- 距離漲停: {dt_result.get('distance_to_limit_up_pct', 'N/A')}% "
+                    f"| 距離跌停: {dt_result.get('distance_to_limit_down_pct', 'N/A')}%"
+                )
+                if "bid_ask_spread_pct" in dt_result:
+                    report_parts.append(f"- 委買賣價差: {dt_result['bid_ask_spread_pct']}%")
+                if "five_level_bid_ratio_pct" in dt_result:
+                    report_parts.append(f"- 五檔委買量佔比: {dt_result['five_level_bid_ratio_pct']}%")
+                if dt_result.get("daytrade_suspended"):
+                    report_parts.append("- ⚠️ 今日暫停現股當沖先賣後買")
+                if dt_result["signals"]:
+                    report_parts.append("### 當沖訊號")
+                    for icon, desc in dt_result["signals"]:
+                        report_parts.append(f"  {icon} {desc}")
+                report_parts.append(f"- {dt_result['disclaimer']}")
+        except Exception as error:
+            report_parts.append(f"  ⚠️ 當沖快照暫時無法取得：{error}")
+        report_parts.append("")
+
     # 2. 技術分析
     csv_path = data_path(data_dir, f"{stock_code(code)}_history.csv")
     has_history = os.path.exists(csv_path)
@@ -57,13 +96,22 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
             df.to_csv(csv_path, index=False)
             has_history = True
             report_parts.append(f"  已取得 {len(df)} 筆資料")
+            if df.attrs.get("failed_months"):
+                report_parts.append(
+                    f"  ⚠️ 部分月份抓取失敗：{', '.join(df.attrs['failed_months'])}；技術指標可能不完整。"
+                )
         else:
             report_parts.append("  ⚠️ 無法取得歷史資料")
         report_parts.append("")
 
     if has_history:
         import pandas as pd
-        df = pd.read_csv(csv_path, parse_dates=["date"])
+        df = pd.read_csv(csv_path, parse_dates=["date"], dtype={"stock_code": str})
+        try:
+            validate_history_code(df, code)
+        except ValueError as error:
+            report_parts.append(f"## 技術指標\n  ⚠️ 資料驗證失敗: {error}")
+            return "\n".join(report_parts)
 
         report_parts.append("## 技術指標")
         analyzer = TechnicalAnalyzer(df)
@@ -71,6 +119,8 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
 
         indicators = result["indicators"]
         report_parts.append(f"- 收盤價: {indicators['price']}")
+        if indicators.get("data_as_of"):
+            report_parts.append(f"- 技術資料截至: {indicators['data_as_of']} 收盤")
 
         # MA
         ma = indicators.get("ma", {})
@@ -93,10 +143,69 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
         if rsi:
             report_parts.append(f"- RSI(14): {rsi['RSI']}")
 
+        cci = indicators.get("cci", {})
+        if cci:
+            report_parts.append(f"- CCI(20): {cci['CCI']}")
+
         # Bollinger
         boll = indicators.get("bollinger", {})
         if boll:
             report_parts.append(f"- 布林通道: 上={boll['upper']} 中={boll['middle']} 下={boll['lower']}")
+
+        keltner = indicators.get("keltner", {})
+        if keltner:
+            report_parts.append(f"- 肯特納通道: 上={keltner['upper']} 中={keltner['middle']} 下={keltner['lower']}")
+
+        atr = indicators.get("atr", {})
+        if atr:
+            report_parts.append(f"- ATR(14): {atr['ATR']}（日均波動 {atr['ATR_pct']}%）")
+
+        regime = indicators.get("market_regime", {})
+        if regime and regime.get("adx") is not None:
+            label = "趨勢市" if regime["regime"] == "trending" else "盤整市"
+            report_parts.append(f"- 市場狀態: {label}（ADX={regime['adx']}）")
+
+        bias = indicators.get("bias", {})
+        if bias:
+            report_parts.append(f"- MA{bias['period']} 乖離: {bias['bias_pct']}%（Z={bias['zscore']}）")
+
+        trailing_stop = indicators.get("trailing_stop", {})
+        if trailing_stop:
+            report_parts.append(
+                f"- 持有移動停損: {trailing_stop['price']}（{trailing_stop['basis']}）"
+            )
+
+        adx = indicators.get("adx", {})
+        if adx and adx.get("ADX") is not None:
+            report_parts.append(
+                f"- ADX/DMI: ADX={adx['ADX']} | +DI={adx['plus_DI']} | -DI={adx['minus_DI']}"
+            )
+
+        obv = indicators.get("obv", {})
+        if obv:
+            direction = "累積" if obv["OBV_change"] > 0 else ("流出" if obv["OBV_change"] < 0 else "持平")
+            report_parts.append(f"- OBV: 近 {obv['period']} 日量能{direction}")
+
+        vr = indicators.get("vr", {})
+        if vr and vr["VR"] is not None:
+            report_parts.append(f"- VR({vr['period']}): {vr['VR']}")
+
+        support_resistance = indicators.get("support_resistance", {})
+        if support_resistance:
+            report_parts.append(
+                f"- 近 20 日支撐/壓力: {support_resistance['support']} / {support_resistance['resistance']}"
+            )
+
+        fibonacci = indicators.get("fibonacci", {})
+        if fibonacci:
+            report_parts.append(
+                f"- Fibonacci(60日): 38.2%={fibonacci['38.2%']} | 50%={fibonacci['50.0%']} | 61.8%={fibonacci['61.8%']}"
+            )
+
+        patterns = result.get("patterns", {})
+        detected_patterns = patterns.get("candlesticks", []) + patterns.get("chart_patterns", [])
+        if detected_patterns:
+            report_parts.append("- 型態候選: " + "、".join(pattern["name"] for pattern in detected_patterns))
 
         # Signals
         report_parts.append(f"\n### 訊號判讀")
@@ -159,8 +268,73 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
                 report_parts.append(f"  ⚠️ {inst_result['error']}")
                 report_parts.append("")
 
+        # 2.55 基本面 / ETF 價值分析
+        etf_result = etf_analysis.analyze(code)
+        if "error" not in etf_result:
+            report_parts.append("## ETF 基本資料")
+            info = etf_result["info"]
+            report_parts.append(f"- 名稱: {info.get('short_name')}（{info.get('fund_type')}）")
+            report_parts.append(f"- 追蹤指數: {info.get('tracking_index')}")
+            report_parts.append(f"- 含國外成分股: {info.get('includes_foreign_holdings')}")
+            report_parts.append(f"- 上市日期: {info.get('listed_date')} | 保管機構: {info.get('custodian')}")
+            for note in etf_result["notes"]:
+                report_parts.append(f"  ⚠️ {note}")
+            report_parts.append("")
+        else:
+            report_parts.append("## 基本面分析")
+            try:
+                fund_fetcher = FundamentalFetcher()
+                valuation = fund_fetcher.fetch_valuation(code)
+                monthly_revenue = fund_fetcher.fetch_monthly_revenue(code)
+                profitability = fund_fetcher.fetch_profitability(code)
+                fund_result = FundamentalAnalyzer(valuation, monthly_revenue, profitability).analyze()
+
+                if "error" not in fund_result:
+                    if valuation:
+                        report_parts.append(
+                            f"- 本益比: {valuation.get('pe_ratio')} | 殖利率: {valuation.get('dividend_yield')}% "
+                            f"| 股價淨值比: {valuation.get('pb_ratio')}（{valuation.get('date')}）"
+                        )
+                    if monthly_revenue:
+                        mom = monthly_revenue.get("mom_pct")
+                        yoy = monthly_revenue.get("yoy_pct")
+                        report_parts.append(
+                            f"- 月營收（{monthly_revenue.get('year_month')}）: {monthly_revenue.get('revenue')} 千元 "
+                            f"| MoM {mom:.2f}% | YoY {yoy:.2f}%" if mom is not None and yoy is not None else
+                            f"- 月營收（{monthly_revenue.get('year_month')}）: {monthly_revenue.get('revenue')} 千元"
+                        )
+                    if profitability:
+                        report_parts.append(
+                            f"- 最新一季毛利率: {profitability.get('gross_margin_pct')}% "
+                            f"| 營業利益率: {profitability.get('operating_margin_pct')}% "
+                            f"| 稅後淨利率: {profitability.get('net_margin_pct')}%"
+                        )
+                    if fund_result.get("signals"):
+                        report_parts.append("### 基本面訊號")
+                        for icon, desc in fund_result["signals"]:
+                            report_parts.append(f"  {icon} {desc}")
+                    report_parts.append("- 基本面資料為 TWSE 公開資訊，僅供價值面參考，不納入技術分數或 ML 預測。")
+                else:
+                    report_parts.append(f"  ⚠️ {fund_result['error']}")
+            except Exception as error:
+                report_parts.append(f"  ⚠️ 基本面資料暫時無法取得：{error}")
+            report_parts.append("")
+
+        # 2.6 公開新聞輿情（僅輔助資訊，不納入技術與 ML 訊號）
+        report_parts.append("## 公開新聞輿情")
+        try:
+            sentiment = NewsSentimentAnalyzer().analyze(code, realtime.get("name"), limit=3)
+            report_parts.append(f"- 近 {sentiment['window_days']} 日 {sentiment['article_count']} 則：{sentiment['label']}（正面 {sentiment['positive_count']}、負面 {sentiment['negative_count']}）")
+            for article in sentiment["articles"]:
+                report_parts.append(f"  - [{article['source']}] {article['title']}")
+            report_parts.append("- 此為標題關鍵詞統計，不納入技術分數或 ML 預測。")
+        except Exception as error:
+            report_parts.append(f"- 輿情資料暫時無法取得：{error}")
+        report_parts.append("")
+
         # 3. ML 預測（含 ensemble + 大盤特徵 + 最佳參數 + 籌碼特徵）
         report_parts.append(f"## ML 預測（未來 {days_ahead} 天）")
+        market_df = load_market_df(data_dir, market_code)
 
         params = None
         params_path = data_path(data_dir, "models", f"{stock_code(code)}_best_params.json")
@@ -169,9 +343,8 @@ def generate_report(code: str, days_ahead: int = 5, data_dir: str = "data") -> s
                 params = json.load(f)
             report_parts.append(f"  使用調參數檔: `{params_path}`")
 
-        market_df = load_market_df(data_dir, "0050")
         if market_df is not None:
-            report_parts.append("  已納入大盤跨資產特徵（0050）")
+            report_parts.append(f"  已納入跨資產基準（{market_code}）")
 
         if institutional_df is not None:
             report_parts.append(f"  已納入法人籌碼特徵（{len(institutional_df)} 筆）")
@@ -231,7 +404,7 @@ def main():
     parser.add_argument("--data-dir", type=data_path, default="data", help="專案 data/ 內的目錄（相對於專案根目錄）")
     args = parser.parse_args()
 
-    report = generate_report(args.code, args.days_ahead, args.data_dir)
+    report = generate_report(args.code, args.days_ahead, args.data_dir, args.market_code, args.day_trade)
     print(report)
 
 

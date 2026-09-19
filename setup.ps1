@@ -71,25 +71,13 @@ Write-Host "[3/4] 安裝 Python 分析套件..." -ForegroundColor Yellow
 
 $reqFile = Join-Path $ProjectRoot "requirements.txt"
 if (Test-Path $reqFile) {
-    # 找到 hermes 的 python/uv
-    $uvExe = Get-Command uv -ErrorAction SilentlyContinue
-    $pipExe = Get-Command pip -ErrorAction SilentlyContinue
-
-    if ($uvExe) {
-        # 💡 修正：如果本地有 uv，先檢查並建立虛擬環境，避免 uv pip 報錯
-        $venvDir = Join-Path $ProjectRoot ".venv"
-        if (-not (Test-Path $venvDir)) {
-            Write-Host "  正在建立 Python 虛擬環境 (.venv)..." -ForegroundColor White
-            & uv venv --quiet
-        }
-        & uv pip install -r $reqFile --quiet 2>&1 | Out-Null
-        Write-Host "  依賴已安裝 (uv)" -ForegroundColor Green
-    } elseif ($pipExe) {
-        & pip install -r $reqFile --quiet 2>&1 | Out-Null
-        Write-Host "  依賴已安裝 (pip)" -ForegroundColor Green
-    } else {
-        Write-Host "  找不到 pip/uv，請手動執行: pip install -r requirements.txt" -ForegroundColor Yellow
+    $hermesPython = Join-Path (Split-Path $hermesExe) "python.exe"
+    if (-not (Test-Path $hermesPython)) {
+        Write-Host "  找不到 Hermes Python: $hermesPython" -ForegroundColor Red
+        exit 1
     }
+    & $hermesPython -m pip install -r $reqFile --quiet
+    Write-Host "  依賴已安裝 (Hermes Python)" -ForegroundColor Green
 } else {
     Write-Host "  requirements.txt 不存在，跳過" -ForegroundColor Gray
 }

@@ -37,15 +37,13 @@ echo "[3/4] 安裝 Python 分析套件..."
 
 REQ_FILE="$PROJECT_ROOT/requirements.txt"
 if [ -f "$REQ_FILE" ]; then
-    if command -v uv &>/dev/null; then
-        uv pip install -r "$REQ_FILE" --quiet 2>/dev/null
-        echo "  依賴已安裝 (uv)"
-    elif command -v pip &>/dev/null; then
-        pip install -r "$REQ_FILE" --quiet 2>/dev/null
-        echo "  依賴已安裝 (pip)"
-    else
-        echo "  ⚠️  找不到 pip/uv，請手動執行: pip install -r requirements.txt"
+    HERMES_PYTHON="$(dirname "$(command -v "$HERMES_EXE")")/python"
+    if [ ! -x "$HERMES_PYTHON" ]; then
+        echo "  找不到 Hermes Python: $HERMES_PYTHON"
+        exit 1
     fi
+    "$HERMES_PYTHON" -m pip install -r "$REQ_FILE" --quiet
+    echo "  依賴已安裝 (Hermes Python)"
 fi
 
 # --- Step 4: 初始化環境 ---

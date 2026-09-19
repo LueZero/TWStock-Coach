@@ -78,7 +78,7 @@ class TWStockFetcher:
 
     def get_history(self, code: str, days: int = 180) -> pd.DataFrame:
         """取得歷史日K資料"""
-        all_data = []
+        all_data, failed_months = [], []
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
 
@@ -90,6 +90,7 @@ class TWStockFetcher:
             params = {"response": "json", "date": date_str, "stockNo": code}
             try:
                 resp = self.session.get(self.TWSE_HISTORY, params=params, timeout=10)
+                resp.raise_for_status()
                 data = resp.json()
 
                 if data.get("stat") == "OK" and data.get("data"):
@@ -101,6 +102,7 @@ class TWStockFetcher:
                             date = f"{year}-{date_parts[1]}-{date_parts[2]}"
 
                             all_data.append({
+                                "stock_code": str(code),
                                 "date": date,
                                 "volume": int(row[1].replace(",", "")),
                                 "open": float(row[3].replace(",", "")),
@@ -110,8 +112,10 @@ class TWStockFetcher:
                             })
                         except (ValueError, IndexError):
                             continue
-            except Exception:
-                pass
+                else:
+                    failed_months.append(date_str)
+            except (requests.RequestException, ValueError):
+                failed_months.append(date_str)
 
             # 下一個月
             if current.month == 12:
@@ -120,7 +124,9 @@ class TWStockFetcher:
                 current = current.replace(month=current.month + 1)
 
         if not all_data:
-            return pd.DataFrame()
+            empty = pd.DataFrame()
+            empty.attrs["failed_months"] = failed_months
+            return empty
 
         df = pd.DataFrame(all_data)
         df["date"] = pd.to_datetime(df["date"])
@@ -129,6 +135,7 @@ class TWStockFetcher:
         # 只保留指定天數
         cutoff = datetime.now() - timedelta(days=days)
         df = df[df["date"] >= pd.Timestamp(cutoff)].reset_index(drop=True)
+        df.attrs["failed_months"] = failed_months
 
         return df
 
@@ -155,6 +162,8 @@ def main():
             return
 
         print(f"取得 {len(df)} 筆歷史資料 ({df['date'].min().date()} ~ {df['date'].max().date()})")
+        if df.attrs.get("failed_months"):
+            print(f"警告：以下月份資料抓取失敗，技術分析前應重新抓取：{', '.join(df.attrs['failed_months'])}")
         print(df.tail(10).to_string(index=False))
 
         if args.save:

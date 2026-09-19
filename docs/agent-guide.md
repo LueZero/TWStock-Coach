@@ -1,90 +1,99 @@
-# Agent 互動設計
+# Hermes 代理人分工
 
-## Hermes Agent 設定
+## 定義與執行分開
 
-### 啟動流程
-1. `run.ps1` / `run.sh` 沿用既有 `HERMES_HOME`，否則使用系統使用者預設目錄
-2. Hermes 讀取 系統 Hermes 的 `config.yaml`（provider / model / terminal）
-3. Hermes **自動載入** `AGENTS.md` 作為工作區上下文
-4. 進入對話模式
+- `AGENTS.md`：共通限制與角色入口，啟動時讀取。
+- `agents/coordinator.md`：主代理分派規則。
+- `agents/<role>.md`：六個專業角色的職責、命令與邊界。
+- `agents/contracts.md`：共享交接契約與寫入責任。
+- `hermes/skills/twstock-coach/SKILL.md`：技能路由入口，不重複所有角色內容。
+- `docs/analysis-language.md`：白話術語與最終輸出。
 
-### 模型選擇（系統 Hermes 的 `config.yaml`）
-```yaml
-provider: copilot      # 或 openrouter, anthropic
-model: gpt-4.1         # 或其他支援的模型
-terminal: local        # local（Linux/macOS）/ git-bash（Windows）
+這是以專案 Markdown 約定角色、使用 Hermes `delegate_task` 建立子代理人的設計；不是把檔案自動註冊成 profiles，也不建立七份持久記憶。角色限制是代理人指令，不是作業系統沙箱或工具權限隔離。
+
+```mermaid
+flowchart TD
+    U[使用者] --> C[coordinator 主代理]
+    C --> D[market-data 資料]
+    D --> T[technical 技術]
+    D --> P[prediction 預測]
+    C --> F[fundamental 基本面]
+    C --> DT[day-trading 當沖]
+    T --> R[risk 風控]
+    P --> R
+    F --> R
+    DT --> R
+    R --> C
+    C --> O[最終回覆 / data/reports]
 ```
 
-Windows 使用 PowerShell 啟動，但 hermes 透過 Git Bash 執行腳本。
+箭頭代表由主代理協調的資料交接，子代理不直接互相分派。未要求的分析不啟動。
 
-## AGENTS.md 結構
+## 啟動
 
-| 區塊 | 用途 |
-|------|------|
-| 角色定義 | 告訴 agent 它是台股分析助手 |
-| 可用工具 | 列出所有 `scripts/` 腳本與 CLI 範例 |
-| 股票代碼對照 | 中文名 → 代碼速查 |
-| 工作流程 | 標準對話 → 工具呼叫順序 |
-| 動態決策邏輯 | **重點**：腳本失敗時如何自動補救（不要直接丟錯給使用者） |
-| 預測流程 | 整合 Phase 1-4 的最佳實踐 |
-| 白話解讀指南 | **重點**：所有術語的白話翻譯表 + 回答範本 |
+```powershell
+# 互動模式：支援專業子代理人委派
+.\run.ps1
 
-## 白話翻譯設計（核心特色）
-
-### 為什麼需要？
-使用者是金融小白，不懂 Sharpe、MDD、KD 是什麼。直接丟 JSON 給他看沒意義。
-
-### 翻譯表（節錄）
-| 術語 | 白話 |
-|------|------|
-| 預測報酬 +6% | 模型猜 5 天後會漲 6% |
-| 上漲機率 83% | 模型有 83% 把握會漲 |
-| ATR 動態止損 | 跌到 X 元就無條件賣，防止小虧變大虧 |
-| Sharpe 1.86 | 報酬與風險的比值不錯（>1 算好） |
-| MDD -5% | 歷史上最慘賠 5% 就回血了 |
-
-完整表格見 [AGENTS.md](../AGENTS.md) 的「白話解讀指南」段落。
-
-### 訊號補充範本
-當 agent 看到 `🟢 BUY` 訊號，**必須**補一段白話：
-
-> 📌 模型預測 5 天會漲 6%，把握度 83%。建議買進，**止損價設 2162 元**（跌到就賣）。⚠️ 把握度若 < 65%，請只用小部位試水溫。
-
-## 動態決策邏輯（重要）
-
-腳本回傳 JSON 帶 `error` 或 `train_samples` 欄位時，agent **不能直接丟錯給使用者**，而是要自動補救：
-
-| 狀況 | 自動處理 |
-|------|---------|
-| `error` 含「資料不足」 | 自動 `fetch_stock_data --days 365 → 730 → 1095` 重抓 |
-| `train_samples < 50` | 告知信心低，建議參考技術分析 |
-| `predicted_return > 10%` | 提醒這是極端值，可能雜訊 |
-| KD/MACD NaN | 自動補抓資料重算 |
-| API 超時 | 等 2 秒重試一次 |
-
-補救過程用一句話說明，不要長篇大論：
-> 「資料不足，自動抓取 730 天重試...」
-
-## 風險提醒（每次都要附）
-
-報告結尾必加：
-```
-⚠️ 以上分析僅供參考，不構成投資建議。
-   模型勝率約 60%，仍有 40% 看錯機率。
+# 單次模式：依角色規範循序分析，不啟動非同步子代理
+.\run.ps1 -Query "分析台積電"
 ```
 
-## 自訂 / 擴充
+```bash
+./run.sh
+./run.sh "分析台積電"
+```
 
-### 加新股票代碼別名
-編輯 `AGENTS.md` 的「股票代碼對照」表格。
+互動模式明確使用 `terminal,skills,web,delegation`；PowerShell 可用 `-Tools` 自訂。只啟用工具不代表每次都要全部使用。
 
-### 加新指標解讀
-編輯 `AGENTS.md` 的「白話解讀指南」名詞表。
+目前安裝的 Hermes 將 `-q` 查詢作單輪執行，非同步委派未必能在退出前完成後續整合。因此啟動腳本的單次模式排除 delegation，維持有限、循序處理；要實際多代理協作請使用互動模式。不要把一次 dispatch 成功當成已完成整合。
 
-### 換 LLM provider
-編輯 系統 Hermes 的 `config.yaml` 的 `provider` + `model` 欄位，並更新 系統 Hermes 的 `.env`。
+沿用既有 `HERMES_HOME`，未設定時使用系統預設（Windows `%LOCALAPPDATA%/hermes`，Linux/macOS `~/.hermes`）。本次不更改全域模型、SOUL 或個人記憶。專案 `agents/` 的角色定義由主代理讀取後傳入委派上下文。
 
-### 加新工具
-1. 在 MVC 對應目錄新增實作，Controller 提供 `main(argv=None, *, prog=None)`，並在 `scripts/__main__.py` 登錄子命令
-2. 在 `AGENTS.md` 的「可用工具」加上 `python -m scripts <功能>` 範例
-3. 重啟 hermes
+## 委派範例
+
+下列是主代理的工具呼叫示意，不是 Python CLI 或已執行的任務。實際值須替換成本次根目錄、直譯器、資料與時間。
+
+```python
+# 先讀取 AGENTS.md、agents/contracts.md、agents/technical.md 的內容。
+# shared_rules、contract、role_definition 是讀到的文字，不是檔名占位符。
+delegate_task(
+    goal="依 technical 角色分析 2330 日線，回傳契約 JSON，不再委派",
+    context=shared_rules + contract + role_definition + task_context
+)
+```
+
+`task_context` 至少包含：
+
+```json
+{
+  "task_id": "2330-review-unique-id",
+  "role": "technical",
+  "project_root": "D:/AI/TWStock-Coach",
+  "python": "D:/AI/TWStock-Coach/.venv/Scripts/python.exe",
+  "code": "2330",
+  "horizon": "daily",
+  "requested_at": "實際查詢時間，含 +08:00",
+  "data_dir": "D:/AI/TWStock-Coach/data",
+  "market_code": null,
+  "output_dir": "D:/AI/TWStock-Coach/data/tmp/agents/2330-review-unique-id/technical",
+  "inputs": ["資料代理已驗證的 CSV 路徑、日期、列數與品質結果"],
+  "write_scope": "僅 output_dir；共用 CSV 唯讀"
+}
+```
+
+等資料角色回報後才委派日線分析；技術與基本面可以 tasks 批次獨立執行。收到必要結果後再把各份證據交給 risk。不得憑分派狀態宣稱收到專業結果。
+
+## 當沖流程
+
+直接分派 day-trading 確認交易日、報價日期與快照時間，再由 risk 檢查流動性、限制及時間有效性。需要日線背景才另行準備資料，不能讓三年歷史／調參延誤快照。
+
+當前 day-trade 輸出缺完整報價日期，也含需審慎核對的制式風險文字；角色必須查證日期、資格及交易方向，不能盲目轉述。角色規範能要求檢查，但不等於底層 API 已提供缺少的資料。
+
+## 維護與驗證
+
+新增角色先寫定義，再更新主代理路由；不要把整份角色內容搬回 AGENTS.md 或 skill。新增功能在 MVC 對應層實作並登錄統一 CLI。別名維護於 market-data，白話術語維護於 analysis-language。
+
+離線驗證包括角色連結、命令、啟動參數傳遞與原有 Python 測試。不需啟動付費模型即可檢查文件接線；實際委派品質須在互動 Hermes 中驗證：查看 delegate_task 呼叫、角色回傳狀態與證據，而不是只看主代理自述。
+
+官方資料：[子代理人委派](https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation)、[Profiles 與獨立狀態](https://hermes-agent.nousresearch.com/docs/user-guide/profiles)。

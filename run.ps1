@@ -4,15 +4,15 @@
 .PARAMETER Query
     單次查詢模式（不進互動）
 .PARAMETER Tools
-    指定工具集，預設 terminal,skills
+    指定工具集，預設 terminal,skills,web,delegation
 .EXAMPLE
     .\run.ps1
     .\run.ps1 -Query "查台積電股價"
-    .\run.ps1 -Query "分析 2330 技術指標" -Tools "terminal,skills"
+    .\run.ps1 -Query "分析 2330 技術指標" -Tools "terminal,skills,web,delegation"
 #>
 param(
     [string]$Query,
-    [string]$Tools = "terminal,skills"
+    [string]$Tools = "terminal,skills,web,delegation"
 )
 
 $ProjectRoot = $PSScriptRoot
@@ -38,8 +38,11 @@ if (-not $hermesExe) {
 
 if ($Query) {
     # 單次查詢模式
-    & $hermesExe chat -q $Query -t $Tools -Q
+    # 單輪退出可能中止非同步子代理；單次查詢採角色規範循序執行。
+    $queryTools = (($Tools -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "delegation" }) -join ",")
+    & $hermesExe chat -q $Query -t $queryTools -Q
 } else {
     # 互動模式
-    & $hermesExe
+    & $hermesExe chat -t $Tools
 }
+exit $LASTEXITCODE

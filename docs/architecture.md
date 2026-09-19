@@ -2,6 +2,8 @@
 
 ```
 twstock-coach/
+├── agents/                   # 主代理與專業角色、交接契約
+│
 ├── hermes/                   # 版控中的自訂 skills 與 plugins
 │
 ├── scripts/

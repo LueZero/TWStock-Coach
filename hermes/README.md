@@ -70,3 +70,5 @@ hermes skills install <owner>/<repo>/hermes/skills/twstock-coach
 3. 重啟 hermes 即生效
 
 模板參考 [twstock-coach/SKILL.md](skills/twstock-coach/SKILL.md)。
+
+代理人職責定義放在專案 `agents/`，此處的 skill 只作路由。多代理人啟動與交接方式見 [操作指南](../docs/agent-guide.md)。

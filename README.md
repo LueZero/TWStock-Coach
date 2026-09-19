@@ -215,3 +215,9 @@ python -m scripts technical --help
 ```
 
 功能包含 `fetch`、`technical`、`fundamental`、`etf`、`sentiment`、`day-trade`、`screen`、`predict`、`report`、`institutional`、`backtest`、`tune`。原本根層轉接腳本已移除，請改用上述命令。
+
+## 代理人分工
+
+`AGENTS.md` 只保留共通規則與入口；主代理依 `agents/coordinator.md` 分派資料、技術、基本面、預測、風控與當沖六個角色。角色及交接契約集中於 [agents/](agents/)，術語與呈現放在 [白話解讀](docs/analysis-language.md)。
+
+使用 `./run.sh` 或 `.\run.ps1` 進入互動 Hermes 才啟用 delegation；單次 Query 依相同角色規範循序執行。角色檔不會自動註冊成 profile，真正分派需主代理呼叫 `delegate_task`。詳細流程見 [代理人操作指南](docs/agent-guide.md)。

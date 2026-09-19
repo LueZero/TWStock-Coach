@@ -163,7 +163,7 @@ python -m scripts report --code 2330 --days-ahead 5
 - [ ] 接受 `--code <股票代碼>` 參數
 - [ ] 輸出 JSON 格式
 - [ ] 錯誤訊息有 `error` 欄位
-- [ ] 在 `AGENTS.md` 的「可用工具」加上 CLI 範例
+- [ ] 在對應 `agents/<role>.md` 加上 CLI 範例，必要時更新 coordinator 路由
 - [ ] 在 `docs/architecture.md` 模組職責表加一列
 
 ### ML / 回測新功能
@@ -225,7 +225,7 @@ feat: 加入 USD/TWD 匯率作為跨資產特徵
 - [ ] 英文版 README / docs
 - [ ] 影片教學 / GIF demo
 - [ ] FAQ 整理
-- [ ] 更多白話術語翻譯（補進 AGENTS.md）
+- [ ] 更多白話術語翻譯（補進 docs/analysis-language.md）
 
 ### 🧪 測試類
 - [ ] 單元測試覆蓋 `scripts/`

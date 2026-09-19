@@ -5,7 +5,7 @@
 #   ./run.sh "查台積電股價"  # 單次查詢
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
-cd "$PROJECT_ROOT"
+cd "$PROJECT_ROOT" || exit 1
 
 # 確認 hermes 存在
 HERMES_EXE=""
@@ -21,9 +21,9 @@ else
 fi
 
 if [ -n "$1" ]; then
-    # 單次查詢模式
-    "$HERMES_EXE" chat -q "$1" -t "terminal,skills" -Q
+    # 單輪退出可能中止非同步委派，改依角色規範循序執行
+    "$HERMES_EXE" chat -q "$1" -t "terminal,skills,web" -Q
 else
     # 互動模式
-    "$HERMES_EXE"
+    "$HERMES_EXE" chat -t "terminal,skills,web,delegation"
 fi

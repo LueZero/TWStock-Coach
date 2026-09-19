@@ -1,30 +1,12 @@
-"""Optuna 自動超參數調校
-
-用 walk-forward 回測的方向命中率 + Sharpe 作為優化目標，
-搜尋 XGBoost / LightGBM 的最佳超參數組合。
-
-輸出：
-- best_params.json (供 prediction_model.py 載入)
-- 優化過程紀錄
-"""
 import argparse
-if __package__:
-    from .project_paths import data_path, stock_code
-else:
-    from project_paths import data_path, stock_code
-import json
-import os
-import sys
-import warnings
+from ..common.paths import data_path, stock_code
+from ..views.console import show, show_json
 from typing import Optional
-
 import numpy as np
 import pandas as pd
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from prediction_model import FeatureEngineer, StockPredictor, load_or_fetch, load_market_df
-
-warnings.filterwarnings("ignore")
+from ..models.prediction import FeatureEngineer, StockPredictor
+from ..models.repository import load_market_df, save_params
+from .history import load_or_fetch
 
 
 def _walk_forward_score(
@@ -212,8 +194,8 @@ def optimize(
     }
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Optuna 超參數調校")
+def main(argv=None, *, prog=None):
+    parser = argparse.ArgumentParser(prog=prog, description="Optuna 超參數調校")
     parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
     parser.add_argument("--days_ahead", type=int, default=5)
     parser.add_argument("--train_window", type=int, default=120)
@@ -223,25 +205,18 @@ def main():
     parser.add_argument("--save", action="store_true", help="儲存最佳參數到 data/models/<code>_best_params.json")
     parser.add_argument("--market-code", type=stock_code, default="0050", help="大盤代理代碼")
     parser.add_argument("--no-market", action="store_true", help="不使用跨資產特徵")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    print(f"開始優化 {args.code}（{args.n_trials} trials）...")
+    show(f"開始優化 {args.code}（{args.n_trials} trials）...")
     result = optimize(
         args.code, args.data_dir, args.days_ahead,
         args.train_window, args.step, args.n_trials,
         market_code=None if args.no_market else args.market_code,
     )
 
-    print(json.dumps({k: v for k, v in result.items() if k != "best_params"},
-                     ensure_ascii=False, indent=2))
+    show_json({k: v for k, v in result.items() if k != "best_params"},
+                     ensure_ascii=False, indent=2)
 
     if args.save and "best_params" in result:
-        os.makedirs(data_path(args.data_dir, "models"), exist_ok=True)
-        path = data_path(args.data_dir, "models", f"{args.code}_best_params.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(result["best_params"], f, ensure_ascii=False, indent=2)
-        print(f"\n最佳參數已儲存至: {path}")
-
-
-if __name__ == "__main__":
-    main()
+        path = save_params(result["best_params"], args.code, args.data_dir)
+        show(f"\n最佳參數已儲存至: {path}")

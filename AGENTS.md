@@ -22,45 +22,45 @@
 
 ## 可用工具
 
-所有分析腳本位於 `scripts/` 目錄，使用專案內的 Python 環境執行。
+所有分析功能統一使用 `python -m scripts <功能>`，必須先切換到專案根目錄並使用專案 Python 環境。舊的根層 `.py` 入口已移除；使用 `python -m scripts --help` 查看功能。
 
 ### 即時報價 & 歷史資料
 ```bash
-python scripts/fetch_stock_data.py --code <股票代碼> --action realtime
-python scripts/fetch_stock_data.py --code <股票代碼> --action history --days 180 --save
+python -m scripts fetch --code <股票代碼> --action realtime
+python -m scripts fetch --code <股票代碼> --action history --days 180 --save
 ```
 
 ### 技術分析
 ```bash
-python scripts/technical_analysis.py --code <股票代碼> --indicators all
+python -m scripts technical --code <股票代碼> --indicators all
 ```
 
 ### 基本面 / 價值分析（上市個股，ETF 不適用）
 ```bash
-python scripts/fundamental_analysis.py --code <股票代碼>
+python -m scripts fundamental --code <股票代碼>
 ```
 
 提供本益比、殖利率、股價淨值比（TWSE 最新交易日）與最新月營收 MoM/YoY、最新一季毛利率/營業利益率/稅後淨利率。僅供價值面參考，不納入技術分數或 ML 預測；查無資料時通常代表該代碼是 ETF、權證或上櫃股票。
 
 ### ETF 基本資料查詢
 ```bash
-python scripts/etf_analysis.py --code <ETF代碼，如 0050>
+python -m scripts etf --code <ETF代碼，如 0050>
 ```
 
 提供追蹤指數、是否含國外成分股、上市日期、保管機構。TWSE 免費公開 API **不提供** ETF 即時淨值(NAV)、折溢價與內扣費用率，回覆時必須明確告知使用者這項限制，不能假裝有折溢價資訊。
 
 ### 公開新聞輿情（輔助訊號）
 ```bash
-python scripts/sentiment_analysis.py --code <股票代碼> --name <公司名稱> --days 7
+python -m scripts sentiment --code <股票代碼> --name <公司名稱> --days 7
 ```
 
 輿情只統計可追溯的近期新聞標題、來源與關鍵詞；不納入技術分數或 ML 預測，不能當作市場共識或買賣指令。
 
 ### 當沖（當日沖銷）風控參考
 ```bash
-python scripts/day_trading_analysis.py --code <股票代碼>
+python -m scripts day-trade --code <股票代碼>
 # 或在綜合報告中一起加入（需盤中查詢才有意義）
-python scripts/report_generator.py --code <股票代碼> --day-trade
+python -m scripts report --code <股票代碼> --day-trade
 ```
 
 提供今日振幅、現價在今日高低區間的位置、距離漲跌停、委買賣價差、五檔委買量佔比，以及當日是否暫停現股當沖先賣後買。**重要限制**：這只是查詢當下的即時快照（數秒內就可能變），不是逐筆委託簿回放，也**不能預測盤中未來走勢**；盤後查詢此工具沒有意義。當沖是信用交易的一種，當日未平倉會被券商強制處理，虛損無法留到隔日摊平，回覆時必須提醒新手謹慧。
@@ -68,49 +68,49 @@ python scripts/report_generator.py --code <股票代碼> --day-trade
 ### 價格區間技術面候選掃描（TWSE 上市普通股）
 ```bash
 # 例如找收盤價 25 至 35 元、當日成交量至少 100 萬股的技術面候選
-python scripts/stock_screener.py --min-price 25 --max-price 35 --min-volume 1000000
+python -m scripts screen --min-price 25 --max-price 35 --min-volume 1000000
 ```
 
 先從價格與流動性候選中取成交量最高的 10 檔，再抓日 K 套用既有技術分析排序。輸出為機率性的技術面候選與停損參考，不得宣稱今天保證上漲或固定上漲金額。範圍目前為 TWSE 上市普通股，不含上櫃、ETF、權證。
 
 ### ML 預測
 ```bash
-python scripts/prediction_model.py --code <股票代碼> --days_ahead 5 --model xgboost
+python -m scripts predict --code <股票代碼> --days_ahead 5 --model xgboost
 ```
 
 ### 綜合報告
 ```bash
-python scripts/report_generator.py --code <股票代碼> --days-ahead 5
+python -m scripts report --code <股票代碼> --days-ahead 5
 ```
 
 ### Walk-forward 回測（含止損）
 ```bash
 # 固定止損
-python scripts/backtest.py --code <股票代碼> --stop-loss 0.05
-python scripts/backtest.py --code <股票代碼> --params data/models/<code>_best_params.json --stop-loss 0.05
+python -m scripts backtest --code <股票代碼> --stop-loss 0.05
+python -m scripts backtest --code <股票代碼> --params data/models/<code>_best_params.json --stop-loss 0.05
 
 # ATR 動態止損（推薦：自動依股票波動調整止損幅度，2.0 倍 ATR）
-python scripts/backtest.py --code <股票代碼> --stop-loss-atr 2.0
+python -m scripts backtest --code <股票代碼> --stop-loss-atr 2.0
 
 # 真實複利模型（每筆用 10% 資金，避免滿倉複利幻覺）
-python scripts/backtest.py --code <股票代碼> --stop-loss-atr 2.0 --position-size 0.1
+python -m scripts backtest --code <股票代碼> --stop-loss-atr 2.0 --position-size 0.1
 ```
 
 ### Optuna 超參數調校（含跨資產特徵）
 ```bash
-python scripts/tune.py --code <股票代碼> --n_trials 30 --save
+python -m scripts tune --code <股票代碼> --n_trials 30 --save
 ```
 
 ### 法人籌碼資料
 ```bash
 # 抓取籌碼資料（三大法人 + 融資融券 + 借券）
-python scripts/institutional_data.py --code <股票代碼> --days 180 --save
+python -m scripts institutional --code <股票代碼> --days 180 --save
 
 # 籌碼面分析（含綜合評分）
-python scripts/institutional_data.py --code <股票代碼> --action analyze
+python -m scripts institutional --code <股票代碼> --action analyze
 
 # 大盤三大法人買賣超（TWSE 上市全市場）
-python scripts/institutional_data.py --action market --days 20 --save
+python -m scripts institutional --action market --days 20 --save
 ```
 
 ## 股票代碼對照
@@ -133,20 +133,20 @@ python scripts/institutional_data.py --action market --days 20 --save
 
 使用者要求依股價區間找標的時，直接執行價格區間技術面候選掃描；不得回覆系統沒有此功能，也不得把候選描述為保證獲利。
 
-使用者詢問「這家公司貴不貴」「便宜嗎」「殖利率多少」「營收成長如何」時，執行 `fundamental_analysis.py`（上市個股）或 `etf_analysis.py`（ETF）；查無資料時，先判斷代碼是否為 ETF、權證或上櫃股票再回覆使用者，不要直接說系統壞掉。
+使用者詢問「這家公司貴不貴」「便宜嗎」「殖利率多少」「營收成長如何」時，執行 `python -m scripts fundamental`（上市個股）或 `python -m scripts etf`（ETF）；查無資料時，先判斷代碼是否為 ETF、權證或上櫃股票再回覆使用者，不要直接說系統壞掉。
 
-使用者提到「當沖」「今天可以沖嗎」「當日沖銷」時，執行 `day_trading_analysis.py` 或在 `report_generator.py` 加 `--day-trade`；務必先確認現在是否為盤中（開盤時間查詢才有意義），並提醒這只是即時快照、不是逐筆委託簿、不能預測盤中未來走勢，且不建議新手輕易嘗試當沖。
+使用者提到「當沖」「今天可以沖嗎」「當日沖銷」時，執行 `python -m scripts day-trade` 或在 `python -m scripts report` 加 `--day-trade`；務必先確認現在是否為盤中（開盤時間查詢才有意義），並提醒這只是即時快照、不是逐筆委託簿、不能預測盤中未來走勢，且不建議新手輕易嘗試當沖。
 
 ## 動態決策邏輯（重要）
 
 腳本回傳的 JSON 含 `error` 或 `train_samples` 等欄位時，你必須**自己判斷下一步**，不要直接把錯誤丟給使用者。
 
-### ML 預測（prediction_model.py）
+### ML 預測（`python -m scripts predict`）
 
 執行後檢查回傳 JSON：
 
 - **`error` 含「資料不足」** → 自動加大 `--days` 重抓歷史資料：
-  - 第一次失敗 → `fetch_stock_data.py --days 365 --save`
+  - 第一次失敗 → `python -m scripts fetch --days 365 --save`
   - 還不夠 → `--days 730`
   - 仍不夠 → `--days 1095`
   - 重新執行預測
@@ -172,9 +172,9 @@ python scripts/institutional_data.py --action market --days 20 --save
 - 遇到錯誤時**先嘗試自動補救**，再決定是否告知使用者
 - 補救過程要簡短說明（例：「資料不足，自動抓取 730 天重試...」）
 
-## 預測流程（Phase 1-4 已整合到 report_generator.py）
+## 預測流程（Phase 1-4 已整合到 python -m scripts report）
 
-`report_generator.py` 會自動：
+`python -m scripts report` 會自動：
 1. 抓取即時報價 + 技術指標
 2. 載入籌碼資料 `data/<code>_institutional.csv`（若存在）作法人特徵 + 獨立籌碼面報告
 3. 載入大盤代理 `data/0050_history.csv`（若存在）作跨資產特徵
@@ -183,16 +183,16 @@ python scripts/institutional_data.py --action market --days 20 --save
 6. 給出 BUY/HOLD/SELL 訊號 + 建議止損價（現價 × 0.95）
 
 **首次分析新股票建議流程：**
-1. 抓 3 年資料：`fetch_stock_data.py --code <code> --days 1095 --save`
+1. 抓 3 年資料：`python -m scripts fetch --code <code> --days 1095 --save`
 2. （選擇性）若要加入特定市場或產業基準，抓取該代碼資料，並在預測、調參與回測都指定相同的 `--market-code`
-3. 抓籌碼資料：`institutional_data.py --code <code> --days 180 --save`
-4. （選擇性）Optuna 調參：`tune.py --code <code> --n_trials 30 --save`
-5. 產報告：`report_generator.py --code <code>`
+3. 抓籌碼資料：`python -m scripts institutional --code <code> --days 180 --save`
+4. （選擇性）Optuna 調參：`python -m scripts tune --code <code> --n_trials 30 --save`
+5. 產報告：`python -m scripts report --code <code>`
 
 **大盤與主力資料限制：**
-- 大盤法人買超／賣超使用 `institutional_data.py --action market`，資料是 TWSE 上市全市場加總，未包含櫃買市場。
+- 大盤法人買超／賣超使用 `python -m scripts institutional --action market`，資料是 TWSE 上市全市場加總，未包含櫃買市場。
 - 券商分點「主力」買賣超不在 TWSE/TPEX 免費公開 API 範圍；不得將三大法人資料描述成主力分點資料。
-- ETF 即時淨值(NAV)、折溢價與內扣費用率不在 TWSE 免費公開 API 範圍；`etf_analysis.py` 只能提供追蹤指數等基本資料，不得假裝有折溢價資訊。
+- ETF 即時淨值(NAV)、折溢價與內扣費用率不在 TWSE 免費公開 API 範圍；`python -m scripts etf` 只能提供追蹤指數等基本資料，不得假裝有折溢價資訊。
 
 **回測驗證效果：**
 - 預設止損 5% 在多數股票表現最佳（Phase 4 實驗結果）
@@ -285,7 +285,7 @@ python scripts/institutional_data.py --action market --days 20 --save
 
 ### 回報報告時的格式範本
 
-當執行完 `report_generator.py` 後，按以下結構整理給使用者：
+當執行完 `python -m scripts report` 後，按以下結構整理給使用者：
 
 ```
 📊 [公司名] ([代碼]) 分析摘要

@@ -28,13 +28,13 @@ Day 0 ──────────────── Day 120 ─── Day 125
 
 ### 固定止損
 ```bash
-python scripts/backtest.py --code 2330 --stop-loss 0.05
+python -m scripts backtest --code 2330 --stop-loss 0.05
 ```
 所有股票統一 5% 止損，簡單但無法適應個股波動。
 
 ### ATR 動態止損（推薦）
 ```bash
-python scripts/backtest.py --code 2330 --stop-loss-atr 2.0
+python -m scripts backtest --code 2330 --stop-loss-atr 2.0
 ```
 
 計算方式：
@@ -65,7 +65,7 @@ effective_stop = entry_atr_pct * 2.0
 
 ### `strategy_realistic`（推薦）
 ```bash
-python scripts/backtest.py --code 2308 --stop-loss-atr 2.0 --position-size 0.1
+python -m scripts backtest --code 2308 --stop-loss-atr 2.0 --position-size 0.1
 ```
 - 每筆只用 **10% 固定初始資金**
 - 不複利重投

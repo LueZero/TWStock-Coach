@@ -96,34 +96,34 @@ chmod +x setup.sh
 
 ```bash
 # 即時報價 + 抓取 3 年歷史
-python scripts/fetch_stock_data.py --code 2330 --action history --days 1095 --save
+python -m scripts fetch --code 2330 --action history --days 1095 --save
 
 # 技術分析
-python scripts/technical_analysis.py --code 2330 --indicators all
+python -m scripts technical --code 2330 --indicators all
 
 # 基本面分析（本益比/殖利率/淨值比/月營收/獲利能力，上市個股用）
-python scripts/fundamental_analysis.py --code 2330
+python -m scripts fundamental --code 2330
 
 # ETF 基本資料（追蹤指數/保管機構，不含 NAV 折溢價）
-python scripts/etf_analysis.py --code 0050
+python -m scripts etf --code 0050
 
 # 當沖（當日沖銷）風控參考（需盤中查詢才有意義）
-python scripts/day_trading_analysis.py --code 2330
+python -m scripts day-trade --code 2330
 
 # 掃描收盤價 25 至 35 元的上市技術面候選
-python scripts/stock_screener.py --min-price 25 --max-price 35 --min-volume 1000000
+python -m scripts screen --min-price 25 --max-price 35 --min-volume 1000000
 
 # ML 預測（5 日）
-python scripts/prediction_model.py --code 2330 --days_ahead 5 --model xgboost
+python -m scripts predict --code 2330 --days_ahead 5 --model xgboost
 
 # 綜合報告（自動載入 Optuna 最佳參數 + 大盤特徵）
-python scripts/report_generator.py --code 2330 --days-ahead 5
+python -m scripts report --code 2330 --days-ahead 5
 
 # Walk-forward 回測（ATR 動態止損 + 真實複利）
-python scripts/backtest.py --code 2330 --stop-loss-atr 2.0 --position-size 0.1
+python -m scripts backtest --code 2330 --stop-loss-atr 2.0 --position-size 0.1
 
 # Optuna 超參數調校
-python scripts/tune.py --code 2330 --n_trials 30 --save
+python -m scripts tune --code 2330 --n_trials 30 --save
 ```
 
 ---
@@ -201,3 +201,17 @@ python scripts/tune.py --code 2330 --n_trials 30 --save
 ## 專案產出位置
 
 所有任務產物統一存於專案 `data/`：CSV 放根層，模型放 `data/models/`，報告／圖片放 `data/reports/`，回測放 `data/backtests/`，暫存放 `data/tmp/`，快取及日誌放 `data/cache/`、`data/logs/`。腳本路徑不受啟動位置影響，`--data-dir` 僅可指定 `data/` 內的目錄。Hermes 本身的設定與對話仍在系統使用者目錄。
+
+## 統一分析入口
+
+在專案根目錄執行（使用專案 Python 環境）：
+
+```bash
+python -m scripts --help
+python -m scripts technical --code 2330
+python -m scripts report --code 2330
+python -m scripts backtest --code 2330
+python -m scripts technical --help
+```
+
+功能包含 `fetch`、`technical`、`fundamental`、`etf`、`sentiment`、`day-trade`、`screen`、`predict`、`report`、`institutional`、`backtest`、`tune`。原本根層轉接腳本已移除，請改用上述命令。

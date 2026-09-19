@@ -4,17 +4,31 @@
 twstock-coach/
 ├── hermes/                   # 版控中的自訂 skills 與 plugins
 │
-├── scripts/                  # 核心分析腳本（全部用 --code 參數，無 hardcode）
-│   ├── fetch_stock_data.py   # 抓 TWSE/TPEX 即時報價 + 歷史 K 線
-│   ├── technical_analysis.py # 趨勢、動能、波動、量價與支撐壓力指標
-│   ├── fundamental_analysis.py # 上市個股本益比/殖利率/淨值比/月營收/獲利能力
-│   ├── etf_analysis.py       # ETF 基本資料（追蹤指數/保管機構，不含 NAV 折溢價）
-│   ├── day_trading_analysis.py # 當沖風控參考：即時五檔、今日振幅、漲跌停距離
-│   ├── institutional_data.py # 個股與 TWSE 大盤三大法人、融資融券、借券、集保
-│   ├── prediction_model.py   # XGB+LGB ensemble + 跨資產特徵
-│   ├── backtest.py           # Walk-forward 回測 + ATR 止損 + 真實複利
-│   ├── tune.py               # Optuna 超參數搜尋
-│   └── report_generator.py   # 一鍵綜合報告（自動串接以上所有模組）
+├── scripts/
+│   ├── __init__.py           # 套件標記
+│   ├── __main__.py           # python -m scripts <功能>
+│   ├── common/
+│   │   └── paths.py          # data/ 路徑邊界
+│   ├── models/               # 資料存取、領域計算、ML 與回測
+│   │   ├── repository.py     # 共用 CSV/JSON 讀寫、來源驗證
+│   │   ├── market_data.py    # 行情 API
+│   │   ├── institutional.py  # 籌碼 API、統計及特徵
+│   │   ├── prediction.py    # 特徵工程與預測模型
+│   │   ├── backtest.py       # walk-forward 計算
+│   │   └── report.py         # ReportData 資料結構
+│   ├── controllers/          # CLI 參數、資料補抓、分析流程協調
+│   │   ├── history.py        # 365 / 730 / 1095 天補抓
+│   │   ├── report_generator.py # 彙整 ReportData 與風控計算
+│   │   └── ...               # 各功能流程與調參／候選掃描
+│   ├── views/                # 不查 API、不訓練模型、不決定交易規則
+│   │   ├── console.py        # CLI 文字與 JSON 輸出
+│   │   └── report.py         # ReportData → Markdown
+│   └── technical/            # 保留技術領域既有 MVC 模組
+│       ├── indicators.py / patterns.py / models.py
+│       ├── controller.py / views.py
+│       └── facade.py         # TechnicalAnalyzer 舊 API 轉接
+│
+├── tests/                    # 單元與離線整合測試
 │
 ├── data/                     # 股票歷史資料快取（gitignore）
 │   ├── 0050_history.csv      # 大盤代理（跨資產特徵來源）
@@ -53,26 +67,37 @@ twstock-coach/
 | `tune` | CSV + 大盤 CSV | `data/models/<code>_best_params.json` | fetch | prediction + backtest |
 | `report_generator` | 股票代碼 | 統一格式報告 | 上面全部 | hermes agent |
 
-## 資料流
+## MVC 邊界與資料流
 
+```mermaid
+flowchart LR
+    CLI[統一 CLI 入口] --> C[Controllers 流程協調]
+    C --> M[Models 資料存取與分析計算]
+    M --> D[(data/)]
+    C --> T[technical/Controller]
+    T --> TM[指標與型態 Model]
+    C --> R[ReportData / AnalysisResult]
+    R --> V[Views JSON / Markdown]
 ```
-TWSE/TPEX API
-     │
-     ▼
-fetch_stock_data ────► data/<code>_history.csv
-                              │
-              ┌───────────────┼────────────────┐
-              ▼               ▼                ▼
-    technical_analysis   prediction_model   backtest
-              │               │
-              └───────┬───────┘
-                      ▼
-              report_generator ───► hermes agent ───► 使用者（白話翻譯）
+
+- Model 不解析 CLI 或輸出文字，也不匯入 Controller、View 或根層入口。
+- Controller 協調 Model、呼叫 View，接收統一 CLI 傳入的參數。
+- View 只呈現已計算的結果，不能讀 CSV、呼叫 API、訓練模型或重新計算止損。
+- 技術面依 `technical/` 的既有領域 MVC 維護；其他功能依 `models/`、`controllers/`、`views/` 分層，避免複製指標公式。
+- `scripts/models/` 是版本管理中的 Python 原始碼；`data/models/` 才是忽略版控的模型產物。
+- 在專案根目錄使用 `python -m scripts <功能>`，如 `technical`、`report`、`backtest`；`python -m scripts --help` 列出全部功能。原本 `python scripts/<入口>.py` 與根層 API 匯入路徑已移除。程式碼請直接匯入 `scripts.models`、`scripts.controllers` 或 `scripts.technical` 下的模組。
+
+## 驗證
+
+```bash
+python -B -m unittest discover -s tests -v
 ```
+
+測試涵蓋統一 CLI 分派、指標一致性、來源代碼驗證、籌碼快取、大盤法人 CLI、報告選項、Model → Controller → View 整合與 `data/` 路徑邊界。測試資料與重構備份留在 `data/tmp/`。
 
 ## 設計原則
 
-1. **無 hardcode**：所有腳本只接受 `--code` 參數，可推廣到任何台股代碼
+1. **無 hardcode**：個股功能使用 `--code`；大盤法人與候選掃描使用各自的篩選參數
 2. **時序嚴格**：walk-forward 切分，訓練集永遠在預測集之前，無未來資料洩漏
 3. **失敗自動補救**：抓不到資料 → 自動加大天數重試（見 AGENTS.md「動態決策邏輯」）
 4. **白話優先**：agent 層負責把所有數字翻譯成人話，腳本只負責算

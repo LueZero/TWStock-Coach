@@ -1,4 +1,4 @@
-"""Offline checks: python -B scripts/test_project_paths.py."""
+"""Offline checks: python -B -m unittest discover -s tests -p test_project_paths.py."""
 import contextlib
 import io
 import json
@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from project_paths import DATA_ROOT, PROJECT_ROOT, data_path, stock_code
+from scripts.common.paths import DATA_ROOT, PROJECT_ROOT, data_path, stock_code
 
 
 class ArtifactPathsTest(unittest.TestCase):
@@ -39,7 +39,7 @@ class ArtifactPathsTest(unittest.TestCase):
                 data_path('data/link', '2330.csv')
 
     def test_cli_rejects_external_directory_before_fetch(self):
-        import fetch_stock_data
+        from scripts.controllers import fetch_stock_data
         with patch.object(sys, 'argv', ['fetch', '--code', '2330', '--data-dir', '../outside']), \
                 patch.object(fetch_stock_data, 'TWStockFetcher') as fetcher, \
                 contextlib.redirect_stderr(io.StringIO()):
@@ -50,8 +50,8 @@ class ArtifactPathsTest(unittest.TestCase):
 
     def test_saved_params_are_consumed_by_report(self):
         import pandas as pd
-        import tune
-        import report_generator
+        from scripts.controllers import tune
+        from scripts.controllers import report_generator
         tmp_root = Path(data_path('data/tmp'))
         tmp_root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=tmp_root) as directory:
@@ -63,13 +63,17 @@ class ArtifactPathsTest(unittest.TestCase):
             saved = Path(directory) / 'models' / '2330_best_params.json'
             self.assertEqual(json.loads(saved.read_text(encoding='utf-8')), params)
             frame = pd.DataFrame({'date': ['2026-01-02'], 'close': [100]})
+            from scripts.technical.models import AnalysisResult
             with patch.object(report_generator, 'TWStockFetcher') as fetcher, \
-                    patch.object(report_generator, 'TechnicalAnalyzer') as analyzer, \
-                    patch.object(report_generator, 'StockPredictor') as predictor:
+                    patch.object(report_generator, 'TechnicalAnalysisController') as analyzer, \
+                    patch.object(report_generator, 'StockPredictor') as predictor, \
+                    patch.object(report_generator.etf_analysis, 'analyze', return_value={'info': {}, 'notes': []}), \
+                    patch.object(report_generator, 'NewsSentimentAnalyzer') as news:
                 fetcher.return_value.get_realtime.return_value = {'error': 'offline'}
                 fetcher.return_value.get_history.return_value = frame
-                analyzer.return_value.generate_signals.return_value = {
-                    'indicators': {'price': 100}, 'signals': [], 'overall': 'test'}
+                analyzer.return_value.analyze.return_value = AnalysisResult(indicators={'price': 100})
+                news.return_value.analyze.return_value = {'window_days': 7, 'article_count': 0,
+                    'positive_count': 0, 'negative_count': 0, 'label': 'test', 'articles': []}
                 predictor.return_value.predict.return_value = {'error': 'offline'}
                 report_generator.generate_report('2330', data_dir=directory)
                 predictor.assert_called_once_with(ensemble=True, params=params)

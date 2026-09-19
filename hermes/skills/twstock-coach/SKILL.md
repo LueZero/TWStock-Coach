@@ -24,7 +24,7 @@ metadata:
 ## Procedure
 
 ### 0. 環境前置
-所有腳本位於 repo 的 `scripts/` 目錄，使用專案 Python 環境執行。預設 cwd 已是 repo 根目錄。
+先確認 cwd 是 repo 根目錄，使用專案 Python 環境執行 `python -m scripts <功能>`。舊的根層 `.py` 入口已移除；各功能參數用 `python -m scripts <功能> --help` 查詢。
 
 ### 產出位置（必須遵守）
 
@@ -45,24 +45,24 @@ metadata:
 
 ### 2. 即時報價
 ```bash
-python scripts/fetch_stock_data.py --code <code> --action realtime
+python -m scripts fetch --code <code> --action realtime
 ```
 
 ### 3. 歷史資料（ML 用至少 365 天，首次建議 1095 天）
 ```bash
-python scripts/fetch_stock_data.py --code <code> --action history --days 1095 --save
+python -m scripts fetch --code <code> --action history --days 1095 --save
 ```
 
 ### 4. 技術分析
 ```bash
-python scripts/technical_analysis.py --code <code> --indicators all
+python -m scripts technical --code <code> --indicators all
 ```
 
 ### 公開新聞輿情
 當使用者詢問「新聞風向」「輿情」或「最近市場怎麼看」時，執行：
 
 ```bash
-python scripts/sentiment_analysis.py --code <code> --name <公司名稱> --days 7
+python -m scripts sentiment --code <code> --name <公司名稱> --days 7
 ```
 
 回覆需列出文章數、來源與標題，並說明這是標題關鍵詞統計，不納入技術分數或 ML 預測，不能代表市場共識或交易指令。
@@ -72,10 +72,10 @@ python scripts/sentiment_analysis.py --code <code> --name <公司名稱> --days 
 
 ```bash
 # 上市個股：本益比/殖利率/淨值比/月營收 MoM-YoY/獲利能力
-python scripts/fundamental_analysis.py --code <code>
+python -m scripts fundamental --code <code>
 
 # ETF：追蹤指數/是否含國外成分股/保管機構
-python scripts/etf_analysis.py --code <ETF代碼>
+python -m scripts etf --code <ETF代碼>
 ```
 
 基本面僅供價值面參考，不納入技術分數或 ML 特徵。查無資料時，先判斷該代碼是否為 ETF、權證或上櫃股票、再回覆使用者，不要直接說系統壞了。ETF 注意：TWSE 免費 API **不提供** NAV 折溢價與內扣費用率，不能假裝有這項資訊。
@@ -84,9 +84,9 @@ python scripts/etf_analysis.py --code <ETF代碼>
 當使用者問「當沖」「今天可以沖嗎」「當日沖銷」時：
 
 ```bash
-python scripts/day_trading_analysis.py --code <code>
+python -m scripts day-trade --code <code>
 # 或在綜合報告中一起加入
-python scripts/report_generator.py --code <code> --day-trade
+python -m scripts report --code <code> --day-trade
 ```
 
 提供今日振幅、現價在今日高低區間的位置、距離漲跌停、委買賣價差、五檔委買量佔比，以及當日是否暫停現股當沖先賣後買。務必先確認現在是否為盤中（開盤時間查詢才有意義），並提醒這只是即時快照、不是逐筆委託簿、不能預測盤中未來走勢，且不建議新手輕易嘗試當沖。
@@ -97,36 +97,36 @@ python scripts/report_generator.py --code <code> --day-trade
 使用者要求「找 25~35 元附近的股票」或「依價格篩選」時，執行：
 
 ```bash
-python scripts/stock_screener.py --min-price 25 --max-price 35 --min-volume 1000000
+python -m scripts screen --min-price 25 --max-price 35 --min-volume 1000000
 ```
 
 掃描器先依 TWSE 上市普通股最近可用收盤價及成交量篩選，再對流動性最高候選抓取歷史日 K，以同一套技術規則排序。結果是候選，不保證上漲或固定上漲金額；目前不含上櫃、ETF、權證。
 
 ### 5. ML 預測
 ```bash
-python scripts/prediction_model.py --code <code> --days_ahead 5 --model xgboost
+python -m scripts predict --code <code> --days_ahead 5 --model xgboost
 ```
 
 ### 6. 綜合報告（會整合技術、輿情、籌碼、ML 與 ATR 止損）
 ```bash
-python scripts/report_generator.py --code <code> --days-ahead 5
+python -m scripts report --code <code> --days-ahead 5
 ```
 
 ### 7. 回測驗證（可選）
 ```bash
-python scripts/backtest.py --code <code> --stop-loss-atr 2.0 --position-size 0.1
+python -m scripts backtest --code <code> --stop-loss-atr 2.0 --position-size 0.1
 ```
 
 ### 8. Optuna 超參數調校（首次分析新股票）
 ```bash
-python scripts/tune.py --code <code> --n_trials 30 --save
+python -m scripts tune --code <code> --n_trials 30 --save
 ```
 
 ### 大盤三大法人
 當使用者詢問「大盤法人買超/賣超」時，不需要股票代碼：
 
 ```bash
-python scripts/institutional_data.py --action market --days 20 --save
+python -m scripts institutional --action market --days 20 --save
 ```
 
 資料為 TWSE 上市全市場加總，不含櫃買市場，也不是券商分點主力進出。
@@ -142,7 +142,7 @@ python scripts/institutional_data.py --action market --days 20 --save
 
 ## 回報報告格式範本
 
-執行完 `report_generator.py` 後，按此結構整理：
+執行完 `python -m scripts report` 後，按此結構整理：
 
 ```
 📊 [公司名] ([代碼]) 分析摘要
@@ -195,11 +195,11 @@ python scripts/institutional_data.py --action market --days 20 --save
 - 跨資產基準為可選功能；只有使用者指定 `--market-code` 時才載入。應選擇與個股分析目的相符的市場或產業基準，不能假設 0050 對所有個股都更準。
 - 回測複利數字會騙人，看實戰數字請用 `--position-size 0.1` 的 `strategy_realistic` 欄位
 - 訊號出 BUY 但機率 < 65% → 只建議小部位試水溫
-- `day_trading_analysis.py` 只在盤中（09:00-13:30）查詢才有意義，盤後查詢到的五檔與振幅是收盤當下的殘影，須提醒使用者；且輸出不含逐筆委託簿，數秒內市況就可能不同
-- 代碼開頭是 0 的標的（0050、00881 等 ETF）存進 CSV 的 `stock_code` 欄若被 pandas 當數字讀入會變成 881，導致 `validate_history_code` 誤判「代碼不符」而中斷報告。`fetch_stock_data.py`、`technical_analysis.py`、`prediction_model.py`、`report_generator.py` 讀歷史 CSV 時都必須帶 `dtype={"stock_code": str}`（已修）；若之後新增讀 CSV 的腳本，記得比照辦理
-- `institutional_data.py --code <code>` 對單一個股抓法人籌碼常在 60~120 秒內逾時（TWSE 個股籌碼端點慢），碰到逾時就跳過該步驟繼續產報告，不要重試卡住整個流程；`--action market`（大盤加總）通常正常
-- `fetch_stock_data.py` 對 TWSE 即時報價偶發 SSL handshake timeout，等 1-2 秒重試一次即可，不要連續重試多次卡住
-- `fundamental_analysis.py`/`etf_analysis.py` 抓的是 TWSE 全市場彙總表（本益比、月營收、營益分析、基金基本資料），單次呼叫可能要幾秒到十幾秒；ETF 代碼查不到本益比資料是正常的（ETF 本來就不適用 P/E），不要當成錯誤
+- `python -m scripts day-trade` 只在盤中（09:00-13:30）查詢才有意義，盤後查詢到的五檔與振幅是收盤當下的殘影，須提醒使用者；且輸出不含逐筆委託簿，數秒內市況就可能不同
+- 代碼開頭是 0 的標的（0050、00881 等 ETF）存進 CSV 的 `stock_code` 欄若被 pandas 當數字讀入會變成 881，導致 `validate_history_code` 誤判「代碼不符」而中斷報告。共用 Repository（`scripts/models/repository.py`）讀歷史 CSV 時必須帶 `dtype={"stock_code": str}`（已修）；若之後新增讀 CSV 的腳本，記得比照辦理
+- `python -m scripts institutional --code <code>` 對單一個股抓法人籌碼常在 60~120 秒內逾時（TWSE 個股籌碼端點慢），碰到逾時就跳過該步驟繼續產報告，不要重試卡住整個流程；`--action market`（大盤加總）通常正常
+- `python -m scripts fetch` 對 TWSE 即時報價偶發 SSL handshake timeout，等 1-2 秒重試一次即可，不要連續重試多次卡住
+- `python -m scripts fundamental`/`python -m scripts etf` 抓的是 TWSE 全市場彙總表（本益比、月營收、營益分析、基金基本資料），單次呼叫可能要幾秒到十幾秒；ETF 代碼查不到本益比資料是正常的（ETF 本來就不適用 P/E），不要當成錯誤
 - 使用者若要求「保證上漲」「保證漲 N 元」這類說法，先澄清釐清真實需求（例如改成「技術面訊號較強的候選」），不要直接執行也不要用模型數字包裝成保證
 
 ## Verification

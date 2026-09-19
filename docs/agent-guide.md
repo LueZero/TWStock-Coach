@@ -85,6 +85,6 @@ Windows 使用 PowerShell 啟動，但 hermes 透過 Git Bash 執行腳本。
 編輯 系統 Hermes 的 `config.yaml` 的 `provider` + `model` 欄位，並更新 系統 Hermes 的 `.env`。
 
 ### 加新工具
-1. 在 `scripts/` 新增 Python 腳本（接受 `--code` 參數）
-2. 在 `AGENTS.md` 的「可用工具」加上 CLI 範例
+1. 在 MVC 對應目錄新增實作，Controller 提供 `main(argv=None, *, prog=None)`，並在 `scripts/__main__.py` 登錄子命令
+2. 在 `AGENTS.md` 的「可用工具」加上 `python -m scripts <功能>` 範例
 3. 重啟 hermes

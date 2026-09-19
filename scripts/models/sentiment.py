@@ -1,10 +1,6 @@
-"""以公開新聞標題產生可追溯的輿情輔助摘要。"""
-import argparse
-import json
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree as ET
-
 import requests
 
 
@@ -59,19 +55,3 @@ class NewsSentimentAnalyzer:
         articles = self.parse_feed(response.content, code, name, days)
         score = sum(article["score"] for article in articles)
         return {"code": str(code), "name": name, "query": query, "window_days": days, "article_count": len(articles), "positive_count": sum(article["score"] > 0 for article in articles), "negative_count": sum(article["score"] < 0 for article in articles), "score": score, "label": "偏正面" if score >= 2 else ("偏負面" if score <= -2 else "中性或訊號不足"), "articles": articles[:limit], "methodology": "以近期公開新聞標題的透明關鍵詞統計，僅作輿情輔助，不納入技術分數或 ML 預測。", "limitations": "標題詞典無法理解反諷、事件影響程度或文章全文；少量文章時不應解讀為市場共識。"}
-
-
-def main():
-    parser = argparse.ArgumentParser(description="台股公開新聞輿情摘要")
-    parser.add_argument("--code", required=True, help="股票代碼")
-    parser.add_argument("--name", help="公司名稱，可提高新聞比對精度")
-    parser.add_argument("--days", type=int, default=7, help="新聞回溯天數")
-    parser.add_argument("--limit", type=int, default=10, help="最多列出文章數")
-    args = parser.parse_args()
-    if args.days < 1 or args.limit < 1:
-        parser.error("days 與 limit 必須至少為 1")
-    print(json.dumps(NewsSentimentAnalyzer().analyze(**vars(args)), ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()

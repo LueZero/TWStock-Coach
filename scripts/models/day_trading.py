@@ -1,20 +1,5 @@
-"""台灣股票當沖（當日沖銷）風控參考分析模組
-
-僅使用即時報價快照（開高低收、漲跌停價、五檔委買委賣）與當沖資格旗標，
-用來判讀「現在這個當下」的流動性、價差與買賣力道，協助當沖風控參考。
-
-嚴格限制（務必先讀）：
-- TWSE 免費 API 不提供逐筆委託簿或分點成交明細，本模組只能看到當下五檔快照，
-  數秒後市況就可能不同，不能回測、不能預測盤中未來走勢。
-- 不產生買賣點或進出場時機建議，只提供振幅、位置、價差、量能與資格等風控參考。
-- 當沖屬信用交易的一種，當日未平倉會被券商強制處理，虧損無法留到隔日攤平；
-  手續費與證交稅會侵蝕薄利，新手務必謹慎。
-"""
-import argparse
-import json
 import time
 from typing import Optional
-
 import requests
 
 
@@ -198,24 +183,3 @@ class DayTradingAnalyzer:
             "當日未平倉會被券商強制處理，虧損無法留到隔日攤平，手續費與證交稅會侵蝕薄利，新手務必謹慎。"
         )
         return result
-
-
-def main():
-    parser = argparse.ArgumentParser(description="台灣股票當沖（當日沖銷）風控參考分析")
-    parser.add_argument("--code", required=True, help="股票代碼")
-    args = parser.parse_args()
-
-    fetcher = DayTradingFetcher()
-    snapshot = fetcher.fetch_snapshot(args.code)
-    if snapshot is None:
-        print(json.dumps({"error": f"找不到股票代碼 {args.code} 的即時報價"}, ensure_ascii=False))
-        return
-
-    eligibility = fetcher.fetch_daytrade_eligibility(args.code)
-    result = DayTradingAnalyzer(snapshot, eligibility).analyze()
-    result["snapshot"] = snapshot
-    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
-
-
-if __name__ == "__main__":
-    main()

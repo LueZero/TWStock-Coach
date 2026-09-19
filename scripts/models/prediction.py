@@ -1,19 +1,7 @@
-"""台灣股票 ML 預測模組 - XGBoost + LightGBM ensemble"""
-import argparse
-if __package__:
-    from .project_paths import data_path, stock_code
-else:
-    from project_paths import data_path, stock_code
-import json
-import os
-import warnings
 from typing import Optional
-
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-
-warnings.filterwarnings("ignore")
 
 
 class FeatureEngineer:
@@ -49,7 +37,7 @@ class FeatureEngineer:
     @staticmethod
     def _add_institutional_features(data: pd.DataFrame, inst_df: pd.DataFrame) -> pd.DataFrame:
         """加入法人籌碼特徵：買賣超累計、連買天數、融資融券變化、券資比"""
-        from institutional_data import create_institutional_features
+        from .institutional import create_institutional_features
 
         inst = create_institutional_features(inst_df)
         inst["date"] = pd.to_datetime(inst["date"])
@@ -309,7 +297,7 @@ class StockPredictor:
         if len(data) < 30:
             return {
                 "error": f"資料不足（需要至少 30 筆有效樣本，目前 {len(data)} 筆）",
-                "hint": "請抓取更多歷史資料：python scripts/fetch_stock_data.py --code <code> --action history --days 365 --save",
+                "hint": "請抓取更多歷史資料：python -m scripts fetch --code <code> --action history --days 365 --save",
             }
 
         original_days = days_ahead
@@ -381,110 +369,3 @@ class StockPredictor:
             "note": (f"原請求 {original_days} 天，因資料量自動調整為 {days_ahead} 天"
                      if original_days != days_ahead else None),
         }
-
-
-def load_market_df(data_dir: str, market_code: str = "0050") -> Optional[pd.DataFrame]:
-    """載入大盤資料（預設 0050），找不到回傳 None"""
-    path = data_path(data_dir, f"{stock_code(market_code)}_history.csv")
-    if not os.path.exists(path):
-        return None
-    try:
-        return pd.read_csv(path, parse_dates=["date"], dtype={"stock_code": str})
-    except Exception:
-        return None
-
-
-def load_or_fetch(code: str, data_dir: str, min_rows: int = 200) -> pd.DataFrame:
-    """載入歷史資料，若不存在或資料不足則自動抓取（逐步加大天數）"""
-    csv_path = data_path(data_dir, f"{stock_code(code)}_history.csv")
-
-    df = None
-    if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path, parse_dates=["date"], dtype={"stock_code": str})
-
-    # 資料足夠直接回傳
-    if df is not None and len(df) >= min_rows:
-        return df
-
-    # 動態抓取：依序嘗試 365 / 730 / 1095 天
-    try:
-        import sys
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from fetch_stock_data import TWStockFetcher
-    except ImportError as e:
-        print(f"⚠️  無法匯入 fetcher: {e}")
-        return df if df is not None else pd.DataFrame()
-
-    fetcher = TWStockFetcher()
-    os.makedirs(data_path(data_dir), exist_ok=True)
-
-    for days in [365, 730, 1095]:
-        print(f"資料不足（{len(df) if df is not None else 0} 筆），自動抓取近 {days} 天...")
-        try:
-            df = fetcher.get_history(code, days)
-            if df is not None and not df.empty:
-                df.to_csv(csv_path, index=False)
-                print(f"已抓取 {len(df)} 筆並儲存")
-                if len(df) >= min_rows:
-                    return df
-        except Exception as e:
-            print(f"抓取 {days} 天失敗: {e}")
-
-    return df if df is not None else pd.DataFrame()
-
-
-def main():
-    parser = argparse.ArgumentParser(description="台灣股票 ML 預測")
-    parser.add_argument("--code", type=stock_code, required=True, help="股票代碼")
-    parser.add_argument("--days_ahead", type=int, default=5, help="預測天數")
-    parser.add_argument("--model", default="xgboost", help="模型類型")
-    parser.add_argument("--data-dir", type=data_path, default="data", help="專案 data/ 內的目錄（相對於專案根目錄）")
-    parser.add_argument("--auto-fetch", action="store_true", default=True, help="資料不足時自動抓取（預設開啟）")
-    parser.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", help="關閉自動抓取")
-    parser.add_argument("--market-code", type=stock_code, default="0050", help="大盤代理代碼（預設 0050）")
-    parser.add_argument("--no-market", action="store_true", help="不使用跨資產特徵")
-    parser.add_argument("--params", type=data_path, help="載入優化參數 JSON")
-    args = parser.parse_args()
-
-    csv_path = data_path(args.data_dir, f"{args.code}_history.csv")
-
-    if args.auto_fetch:
-        df = load_or_fetch(args.code, args.data_dir)
-    else:
-        if not os.path.exists(csv_path):
-            print(f"找不到歷史資料: {csv_path}")
-            print(f"請先執行: python scripts/fetch_stock_data.py --code {args.code} --action history --save")
-            return
-        df = pd.read_csv(csv_path, parse_dates=["date"], dtype={"stock_code": str})
-
-    if df is None or df.empty:
-        print(json.dumps({"error": "無法取得任何歷史資料"}, ensure_ascii=False, indent=2))
-        return
-
-    market_df = None if args.no_market else load_market_df(args.data_dir, args.market_code)
-
-    # 載入籌碼資料（若存在）
-    institutional_df = None
-    try:
-        from institutional_data import load_institutional_df
-        institutional_df = load_institutional_df(args.code, args.data_dir)
-    except ImportError:
-        pass
-
-    params = None
-    if args.params and os.path.exists(args.params):
-        with open(args.params, encoding="utf-8") as f:
-            params = json.load(f)
-
-    predictor = StockPredictor(params=params)
-    result = predictor.predict(df, args.days_ahead, market_df=market_df, institutional_df=institutional_df)
-    if market_df is not None:
-        result["market_features"] = f"已納入大盤代理 {args.market_code}"
-    if institutional_df is not None:
-        result["institutional_features"] = f"已納入籌碼特徵（{len(institutional_df)} 筆）"
-
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()

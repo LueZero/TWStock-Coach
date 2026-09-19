@@ -1,12 +1,4 @@
-"""台灣股票基本面分析模組 - 本益比/殖利率/股價淨值比/月營收/獲利能力
-
-資料來源：TWSE OpenAPI（https://openapi.twse.com.tw/），僅涵蓋上市普通股。
-ETF、權證、上櫃股票不適用（本益比等欄位對 ETF 無意義，另見 etf_analysis.py）。
-"""
-import argparse
-import json
 from typing import Optional
-
 import requests
 
 
@@ -134,22 +126,3 @@ class FundamentalAnalyzer:
             "profitability": self.profitability,
             "signals": signals,
         }
-
-
-def main():
-    parser = argparse.ArgumentParser(description="台灣上市股票基本面分析（本益比/殖利率/淨值比/月營收/獲利能力）")
-    parser.add_argument("--code", required=True, help="股票代碼")
-    args = parser.parse_args()
-
-    fetcher = FundamentalFetcher()
-    valuation = fetcher.fetch_valuation(args.code)
-    monthly_revenue = fetcher.fetch_monthly_revenue(args.code)
-    profitability = fetcher.fetch_profitability(args.code)
-
-    analyzer = FundamentalAnalyzer(valuation, monthly_revenue, profitability)
-    result = analyzer.analyze()
-    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
-
-
-if __name__ == "__main__":
-    main()

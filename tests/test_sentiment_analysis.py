@@ -2,7 +2,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from scripts.sentiment_analysis import NewsSentimentAnalyzer
+from scripts.models.sentiment import NewsSentimentAnalyzer
 
 
 FEED = b'''<?xml version="1.0"?><rss><channel>

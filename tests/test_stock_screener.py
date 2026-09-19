@@ -1,7 +1,7 @@
 """股票候選掃描器的資料解析測試。"""
 import unittest
 
-from scripts.stock_screener import TaiwanStockScreener
+from scripts.controllers.stock_screener import TaiwanStockScreener
 
 
 class StockScreenerTests(unittest.TestCase):

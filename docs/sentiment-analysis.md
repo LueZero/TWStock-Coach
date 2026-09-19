@@ -2,10 +2,10 @@
 
 ## 用途
 
-`scripts/sentiment_analysis.py` 從 Google News RSS 查詢近期公開新聞，依股票代碼與公司名稱比對標題，輸出來源、時間、連結、關鍵詞與保守的情緒摘要。綜合報告也會顯示最近 3 則結果。
+`python -m scripts sentiment` 從 Google News RSS 查詢近期公開新聞，依股票代碼與公司名稱比對標題，輸出來源、時間、連結、關鍵詞與保守的情緒摘要。綜合報告也會顯示最近 3 則結果。
 
 ```bash
-python scripts/sentiment_analysis.py --code 2338 --name 光罩 --days 7
+python -m scripts sentiment --code 2338 --name 光罩 --days 7
 ```
 
 ## 方法與範圍

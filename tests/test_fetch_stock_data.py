@@ -1,7 +1,7 @@
 """歷史資料抓取的完整性揭露測試。"""
 import unittest
 
-from scripts.fetch_stock_data import TWStockFetcher
+from scripts.models.market_data import TWStockFetcher
 
 
 class FailingResponse:

@@ -6,7 +6,8 @@ import pandas as pd
 
 from scripts.technical.controller import TechnicalAnalysisController
 from scripts.technical.views import TechnicalAnalysisView
-from scripts.technical_analysis import TechnicalAnalyzer, validate_history_code
+from scripts.technical.facade import TechnicalAnalyzer
+from scripts.models.repository import validate_history_code
 
 
 def sample_ohlcv(rows=100):

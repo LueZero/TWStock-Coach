@@ -41,7 +41,7 @@
 - Hermes Agent 版本: 0.14.x
 
 **重現步驟**
-1. 執行 `python scripts/xxx.py --code 2330`
+1. 執行 `python -m scripts <功能> --code 2330`
 2. ...
 
 **預期行為**
@@ -132,13 +132,13 @@ cd TWStock-Coach
 ```bash
 # 抓 4 檔測試股票的 3 年歷史
 for code in 0050 2330 2317 2454 2308; do
-  python scripts/fetch_stock_data.py --code $code --days 1095 --save
+  python -m scripts fetch --code $code --days 1095 --save
 done
 ```
 
 ### 驗證環境
 ```bash
-python scripts/report_generator.py --code 2330 --days-ahead 5
+python -m scripts report --code 2330 --days-ahead 5
 # 應該看到完整報告輸出
 ```
 
@@ -260,6 +260,14 @@ feat: 加入 USD/TWD 匯率作為跨資產特徵
 
 ## 產出路徑規範
 
-新增腳本時，使用 `scripts/project_paths.py` 的 `data_path()` 定位及檢查讀寫路徑；任務產物限於專案 `data/`。不要使用依賴 cwd 的相對輸出，也不要另建根層 `models/`、`reports/` 或使用系統暫存位置。測試暫存目錄須建於 `data/tmp/`。
+新增功能時，使用 `scripts/common/paths.py` 的 `data_path()` 定位及檢查讀寫路徑；任務產物限於專案 `data/`。不要使用依賴 cwd 的相對輸出，也不要另建根層 `models/`、`reports/` 或使用系統暫存位置。測試暫存目錄須建於 `data/tmp/`。
 
-離線路徑測試：`python -B scripts/test_project_paths.py`。
+離線路徑測試：`python -B -m unittest discover -s tests -p test_project_paths.py`。
+
+## MVC 程式碼位置
+
+根層只保留 `scripts/__init__.py` 與 `scripts/__main__.py`，功能一律透過 `python -m scripts <功能>` 呼叫。新增資料來源、模型或計算請放 `scripts/models/`；流程放 `scripts/controllers/`；格式放 `scripts/views/`。技術指標與交易訊號沿用 `scripts/technical/` 的既有 MVC。內部模組不得回頭匯入根層入口；資料讀寫重用 `models/repository.py`，測試放 `tests/`。
+
+新增流程至少驗證正常輸出、資料不足或缺漏，以及離線可測的整合路徑；請避免測試碰觸真實網路。完整命令：`python -B -m unittest discover -s tests -v`。
+
+新增 CLI 功能時，Controller 提供 `main(argv=None, *, prog=None)`，並在 `scripts/__main__.py` 的 `COMMANDS` 登錄。CLI 只載入選中的 Controller，避免查說明就載入全部分析套件。

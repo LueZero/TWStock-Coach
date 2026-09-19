@@ -25,4 +25,4 @@ venv/
 # --- 模型輸出 ---
 *.pkl
 *.joblib
-models/
+/data/models/

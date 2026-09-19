@@ -8,9 +8,21 @@
 | Model | `scripts/technical/patterns.py` | 以固定條件偵測 K 線與圖表型態候選。 |
 | Controller | `scripts/technical/controller.py` | 集中訊號規則、分數權重與多空結論。 |
 | View | `scripts/technical/views.py` | 將 `AnalysisResult` 呈現為 JSON 或 Markdown，不含交易判斷。 |
-| 相容入口 | `scripts/technical_analysis.py` | 提供 CLI 與既有 `TechnicalAnalyzer` API，委派給 MVC 模組。 |
+| CLI Controller | `scripts/controllers/technical_analysis.py` | 解析 CLI、透過 Repository 讀取與驗證資料，再委派技術 Controller / View。 |
+| 相容轉接 | `scripts/technical/facade.py` | 保留 `TechnicalAnalyzer` 方法與舊欄位名稱，所有指標委派給同一個 Model。 |
+| 統一入口 | `scripts/__main__.py` | 透過 `python -m scripts technical` 分派至技術 CLI Controller。 |
 
 資料流：OHLCV CSV -> Model -> Controller -> `AnalysisResult` -> View / `report_generator.py`。
+
+整體 scripts 的分層見 [architecture.md](architecture.md)。綜合報告由 `controllers/report_generator.py` 彙整 `ReportData`，再交給 `views/report.py`；技術段落重用 `TechnicalAnalysisView.report_section()`，不再在報告入口複製指標公式。
+
+### 指標一致性
+
+舊 `TechnicalAnalyzer.ema()`、`macd()`、`rsi()` 原本保留另一套公式，與 `generate_signals()` 的 MVC 計算結果不同。現在統一使用 `IndicatorCalculator`：EMA/MACD 使用 `adjust=False`，RSI 使用 Wilder 平滑。舊 API 的方法與資料結構仍保留，但直接呼叫這三個方法的數值可能與舊版不同；既有 Controller 的公式與訊號權重沒有修改。ML 特徵工程與回測的既有公式維持原樣。
+
+報告 BUY 風控也改用同一個 Wilder ATR Model，保留 ATR × 2 與 3% 至 8% 的止損距離限制；不再另算簡單移動平均 ATR。這可能改變報告的止損參考價。
+
+報告可用 `--day-trade` 加入當沖快照；`--market-code 0050` 可明確選用跨資產基準。綜合報告預設不指定跨資產基準，技術分數也不含 0050 相對強弱。
 
 ## 已實作能力
 
@@ -47,11 +59,11 @@
 | 籌碼 | 個股三大法人、融資融券、借券、集保大戶 | 依 API 可用資料 | 另由 `institutional_data.py` 計算籌碼評分。 |
 | 籌碼 | 大盤三大法人 | 5、10、20 日摘要 | TWSE 上市全市場的外資、投信、自營商加總與連買連賣。 |
 
-技術面 Model 實作於 `scripts/technical/`，由 `scripts/technical_analysis.py` 提供相容 CLI，並由 `scripts/report_generator.py` 呈現。
+技術面 Model 實作於 `scripts/technical/`，由 `python -m scripts technical` 提供 CLI，並由 `python -m scripts report` 呈現。
 
 ## 價格區間候選掃描
 
-`python scripts/stock_screener.py --min-price 25 --max-price 35 --min-volume 1000000` 先以 TWSE 上市普通股最近可用交易日的收盤價與成交量篩選，再對成交量最高的候選抓取歷史日 K，套用同一套 Controller 技術訊號排序。輸出的 `as_of` 是實際收盤日期；`screen_close` 是篩選用收盤價，`technical_close` 是最後一根日 K 收盤價，`realtime_close` 則是即時 API 回傳價。`realtime_status=no_latest_trade` 表示 API 未提供最新成交價，應以 `screen_close` 視為最近收盤。此結果為技術面候選與風控參考，不是保證今日上漲或預測固定上漲金額；目前範圍不含上櫃、ETF、權證。
+`python -m scripts screen --min-price 25 --max-price 35 --min-volume 1000000` 先以 TWSE 上市普通股最近可用交易日的收盤價與成交量篩選，再對成交量最高的候選抓取歷史日 K，套用同一套 Controller 技術訊號排序。輸出的 `as_of` 是實際收盤日期；`screen_close` 是篩選用收盤價，`technical_close` 是最後一根日 K 收盤價，`realtime_close` 則是即時 API 回傳價。`realtime_status=no_latest_trade` 表示 API 未提供最新成交價，應以 `screen_close` 視為最近收盤。此結果為技術面候選與風控參考，不是保證今日上漲或預測固定上漲金額；目前範圍不含上櫃、ETF、權證。
 
 ## 綜合訊號規則
 
@@ -82,6 +94,6 @@ ATR 與支撐/壓力用於風險與價格位置判讀，不直接投票，避免
 
 ## 大盤法人資料
 
-`python scripts/institutional_data.py --action market --days 20` 會逐日加總 TWSE T86 上市股票的外資、投信、自營商與三大法人淨額，提供當日、5/10 日累計與連買連賣統計。
+`python -m scripts institutional --action market --days 20` 會逐日加總 TWSE T86 上市股票的外資、投信、自營商與三大法人淨額，提供當日、5/10 日累計與連買連賣統計。
 
 此資料不含櫃買市場，亦非券商分點的「主力」買賣超。主力分點需要專用資料來源，不能從免費 TWSE/TPEX 公開 API 合理推導。

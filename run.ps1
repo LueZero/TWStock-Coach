@@ -5,14 +5,20 @@
     單次查詢模式（不進互動）
 .PARAMETER Tools
     指定工具集，預設 terminal,skills,web,delegation
+.PARAMETER Dashboard
+    啟動 Hermes 官方網頁 Chat，預設 http://127.0.0.1:9119/chat
 .EXAMPLE
     .\run.ps1
+    .\run.ps1 -Dashboard
     .\run.ps1 -Query "查台積電股價"
     .\run.ps1 -Query "分析 2330 技術指標" -Tools "terminal,skills,web,delegation"
 #>
 param(
     [string]$Query,
-    [string]$Tools = "terminal,skills,web,delegation"
+    [string]$Tools = "terminal,skills,web,delegation",
+    [switch]$Dashboard,
+    [ValidateRange(1,65535)][int]$Port = 9119,
+    [switch]$NoOpen
 )
 
 $ProjectRoot = $PSScriptRoot
@@ -36,7 +42,19 @@ if (-not $hermesExe) {
     }
 }
 
-if ($Query) {
+if ($Dashboard) {
+    if ($Query) { throw "-Dashboard 與 -Query 不可同時使用" }
+    # Dashboard Chat uses the TUI gateway, not `hermes chat -t`.
+    $env:HERMES_CWD = $ProjectRoot
+    $env:TERMINAL_CWD = $ProjectRoot
+    $env:HERMES_TUI_TOOLSETS = $Tools
+    # Python otherwise inherits incorrect .js MIME types from Windows registry.
+    $runtimePath = Join-Path $ProjectRoot "hermes/dashboard_runtime"
+    $env:PYTHONPATH = if ($env:PYTHONPATH) { "$runtimePath$([IO.Path]::PathSeparator)$env:PYTHONPATH" } else { $runtimePath }
+    $dashboardArgs = @("dashboard", "--host", "127.0.0.1", "--port", "$Port")
+    if ($NoOpen) { $dashboardArgs += "--no-open" }
+    & $hermesExe @dashboardArgs
+} elseif ($Query) {
     # 單次查詢模式
     # 單輪退出可能中止非同步子代理；單次查詢採角色規範循序執行。
     $queryTools = (($Tools -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "delegation" }) -join ",")

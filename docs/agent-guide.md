@@ -97,3 +97,6 @@ delegate_task(
 離線驗證包括角色連結、命令、啟動參數傳遞與原有 Python 測試。不需啟動付費模型即可檢查文件接線；實際委派品質須在互動 Hermes 中驗證：查看 delegate_task 呼叫、角色回傳狀態與證據，而不是只看主代理自述。
 
 官方資料：[子代理人委派](https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation)、[Profiles 與獨立狀態](https://hermes-agent.nousresearch.com/docs/user-guide/profiles)。
+## Hermes 網頁 Chat
+
+使用 `./run.ps1 -Dashboard`（Windows）或 `./run.sh --dashboard`（Linux/macOS）啟動 Hermes 內建 Chat，沿用本專案主代理與角色規範。工作目錄、工具集、趨勢圖下載及限制見 [Dashboard 整合](hermes-dashboard.md)。

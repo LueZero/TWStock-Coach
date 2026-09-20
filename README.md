@@ -221,3 +221,12 @@ python -m scripts technical --help
 `AGENTS.md` 只保留共通規則與入口；主代理依 `agents/coordinator.md` 分派資料、技術、基本面、預測、風控與當沖六個角色。角色及交接契約集中於 [agents/](agents/)，術語與呈現放在 [白話解讀](docs/analysis-language.md)。
 
 使用 `./run.sh` 或 `.\run.ps1` 進入互動 Hermes 才啟用 delegation；單次 Query 依相同角色規範循序執行。角色檔不會自動註冊成 profile，真正分派需主代理呼叫 `delegate_task`。詳細流程見 [代理人操作指南](docs/agent-guide.md)。
+## Hermes 網頁 Chat 與趨勢圖
+
+Windows 執行 `.\run.ps1 -Dashboard`，開啟 <http://127.0.0.1:9119/chat>，即可在 Hermes 內建 Chat 使用專案角色規範。詳細操作見 [Dashboard 整合](docs/hermes-dashboard.md)。
+
+技術分析加 `--chart` 可產出收盤趨勢、均線與成交量 PNG，另存 Markdown 報告於 `data/reports/`：
+
+```powershell
+.venv/Scripts/python.exe -B -m scripts technical --code 0050 --chart
+```

@@ -34,3 +34,16 @@ class AnalysisResult:
             "overall": self.overall,
             "summary": self.summary,
         }
+
+
+@dataclass
+class TrendChartData:
+    """Prepared chart series; Views must not recalculate indicators."""
+
+    code: str
+    dates: list[str]
+    close: list[float]
+    volume: list[float]
+    moving_averages: dict[str, list[float]]
+    overall: str
+    source: str

@@ -3,6 +3,7 @@
 # 用法:
 #   ./run.sh              # 互動模式
 #   ./run.sh "查台積電股價"  # 單次查詢
+#   ./run.sh --dashboard    # Hermes 官方網頁 Chat
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_ROOT" || exit 1
@@ -20,7 +21,14 @@ else
     exit 1
 fi
 
-if [ -n "$1" ]; then
+if [ "$1" = "--dashboard" ]; then
+    shift
+    export HERMES_CWD="$PROJECT_ROOT"
+    export TERMINAL_CWD="$PROJECT_ROOT"
+    export HERMES_TUI_TOOLSETS="terminal,skills,web,delegation"
+    export PYTHONPATH="$PROJECT_ROOT/hermes/dashboard_runtime${PYTHONPATH:+:$PYTHONPATH}"
+    "$HERMES_EXE" dashboard --host 127.0.0.1 "$@"
+elif [ -n "$1" ]; then
     # 單輪退出可能中止非同步委派，改依角色規範循序執行
     "$HERMES_EXE" chat -q "$1" -t "terminal,skills,web" -Q
 else

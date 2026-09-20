@@ -15,9 +15,14 @@ class IndicatorCalculator:
 
     def sma(self, periods=(5, 10, 20, 60)):
         return {
-            f"MA{period}": round(self.df["close"].rolling(period).mean().iloc[-1], 2)
-            for period in periods if len(self.df) >= period
+            name: round(series.iloc[-1], 2)
+            for name, series in self.sma_series(periods).items()
         }
+
+    def sma_series(self, periods=(5, 10, 20, 60)):
+        """Full history for both numeric analysis and chart rendering."""
+        return {f"MA{period}": self.df["close"].rolling(period).mean()
+                for period in periods if len(self.df) >= period}
 
     def ema(self, periods=(12, 26)):
         return {

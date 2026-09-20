@@ -2,7 +2,7 @@
 import pandas as pd
 
 from .indicators import IndicatorCalculator
-from .models import AnalysisResult, Signal
+from .models import AnalysisResult, Signal, TrendChartData
 from .patterns import PatternDetector
 
 
@@ -96,3 +96,22 @@ class TechnicalAnalysisController:
         overall = "偏多" if bullish >= bearish + 2 else ("偏空" if bearish >= bullish + 2 else "中性")
         summary = {"bullish_score": bullish, "bearish_score": bearish, "signal_count": len(signals), "market_regime": indicators["market_regime"]["regime"], "volume_confirmed": indicators["volume"].get("volume_ratio", 0) >= 1, "trailing_stop": indicators["trailing_stop"], "methodology": "依市場狀態動態加權的規則化技術分析；不構成預測或交易指令。"}
         return AnalysisResult(indicators=indicators, patterns=patterns, signals=signals, overall=overall, summary=summary)
+
+    def trend_chart(self, code, result, bars=120):
+        if not 20 <= bars <= 1000:
+            raise ValueError("圖表筆數須介於 20 至 1000")
+        if "date" not in self.df or self.df.empty:
+            raise ValueError("圖表需要非空且含 date 欄位的歷史資料")
+        dates = pd.to_datetime(self.df["date"], errors="raise")
+        if dates.isna().any() or dates.duplicated().any() or not dates.is_monotonic_increasing:
+            raise ValueError("圖表日期必須有效、遞增且不重複；請先整理歷史資料")
+        # Calculate before cropping so MA60 is present at the left chart edge.
+        averages = self.calculator.sma_series()
+        return TrendChartData(
+            code=code, dates=dates.dt.strftime("%Y-%m-%d").tail(bars).tolist(),
+            close=self.df["close"].tail(bars).tolist(),
+            volume=self.df["volume"].tail(bars).tolist(),
+            moving_averages={name: values.tail(bars).tolist() for name, values in averages.items()},
+            overall=result.overall,
+            source="專案歷史 CSV（來源須依資料取得紀錄核實）",
+        )

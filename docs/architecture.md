@@ -106,3 +106,6 @@ python -B -m unittest discover -s tests -v
 5. **可選增強**：Optuna 參數、跨資產特徵都是可選，沒有也能跑
 
 Hermes 執行資料位於系統使用者目錄：Windows `%LOCALAPPDATA%/hermes`，Linux/macOS `~/.hermes`；既有 `HERMES_HOME` 優先。
+## 趨勢圖輸出
+
+`technical --chart` 由 `TechnicalAnalysisController.trend_chart` 準備 `TrendChartData`，均線共用 `IndicatorCalculator.sma_series`。`technical/chart_view.py` 只繪製已計算序列；CLI 將 PNG 與 Markdown 寫入 `data/reports/`，並回傳 artifacts 路徑。Hermes Dashboard 啟動與圖檔呈現見 [整合說明](hermes-dashboard.md)。

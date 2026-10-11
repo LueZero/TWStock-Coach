@@ -139,11 +139,31 @@ async function until(expression) {
     const saved = JSON.parse(
       fs.readFileSync(path.join(scratch, "assistant-report-id.json"), "utf8"),
     );
+    const symbol = saved.symbol || "2409";
     await evaluate(
-      `document.getElementById('stockInput').value='2409';document.getElementById('searchForm').requestSubmit()`,
+      `document.getElementById('stockInput').value=${JSON.stringify(symbol)};document.getElementById('searchForm').requestSubmit()`,
     );
-    await until(`state.stock.symbol==='2409'`);
+    await until(`state.stock.symbol===${JSON.stringify(symbol)}`);
     await evaluate(`selectSection('assistant',false)`);
+    assert.ok(
+      await evaluate(
+        `document.getElementById('assistantRangeMode').value==='auto' && document.getElementById('assistantStartLabel').hidden`,
+      ),
+    );
+    await evaluate(
+      `document.getElementById('assistantRangeMode').value='manual'; document.getElementById('assistantRangeMode').dispatchEvent(new Event('change'))`,
+    );
+    assert.ok(
+      await evaluate(`!document.getElementById('assistantStartLabel').hidden`),
+    );
+    await evaluate(
+      `document.getElementById('assistantRangeMode').value='auto'; document.getElementById('assistantRangeMode').dispatchEvent(new Event('change'))`,
+    );
+    assert.ok(
+      await evaluate(
+        `['assistantCapital','assistantRisk','assistantShares','assistantCost','assistantDiscount','assistantMinimum'].every(id=>document.getElementById(id)===null)`,
+      ),
+    );
     await until(`!document.getElementById('assistantLogin').hidden`);
     await evaluate(
       `document.getElementById('assistantAccessKey').value=${JSON.stringify(process.env.ASSISTANT_ACCESS_KEY)};document.getElementById('assistantLogin').requestSubmit()`,
@@ -155,8 +175,48 @@ async function until(expression) {
       `document.getElementById('assistantHistory').value=${JSON.stringify(saved.report_id)};document.getElementById('assistantHistory').dispatchEvent(new Event('change'))`,
     );
     await until(
-      `document.getElementById('assistantContent').textContent.includes('MA20')`,
+      `document.getElementById('assistantContent').textContent.includes('AI 重點摘要')`,
     );
+    if (saved.structured) {
+      assert.equal(
+        await evaluate(
+          `document.querySelectorAll('.assistant-research-card').length`,
+        ),
+        7,
+      );
+      assert.equal(
+        await evaluate(
+          `document.querySelectorAll('.assistant-action-card').length`,
+        ),
+        3,
+      );
+      assert.ok(
+        await evaluate(
+          `document.querySelector('.assistant-report-windows').textContent.length>30`,
+        ),
+      );
+      await evaluate(
+        `document.querySelector('.assistant-action-tabs [data-action="holding"]').click()`,
+      );
+      assert.ok(
+        await evaluate(
+          `!document.querySelector('.assistant-action-card.holding').hidden && document.querySelector('.assistant-action-card.entry').hidden`,
+        ),
+      );
+      await evaluate(
+        `document.querySelector('.assistant-action-tabs [data-action="entry"]').click()`,
+      );
+      await evaluate(
+        `Array.from(document.querySelectorAll('.assistant-report-nav button')).find(b=>b.textContent==='財務').click()`,
+      );
+      await pause(400);
+      assert.ok(
+        await evaluate(
+          `document.getElementById('assistantContent').scrollTop>100`,
+        ),
+      );
+      await evaluate(`document.getElementById('assistantContent').scrollTop=0`);
+    }
     for (const tab of ["plan", "evidence", "quality", "chart", "summary"]) {
       await evaluate(
         `document.querySelector('[data-report-tab="${tab}"]').click()`,
@@ -167,8 +227,20 @@ async function until(expression) {
         ),
         tab,
       );
+      if (tab === "plan") {
+        assert.ok(
+          await evaluate(
+            `document.querySelectorAll('.assistant-observation').length>=7`,
+          ),
+        );
+      }
     }
     await until(`!document.getElementById('assistantGenerate').disabled`);
+    assert.ok(
+      await evaluate(
+        `document.getElementById('assistantContent').textContent.includes('AI 重點摘要')`,
+      ),
+    );
     assert.equal(
       await evaluate(
         `document.querySelectorAll('#assistantContent a[download]').length`,
@@ -209,6 +281,21 @@ async function until(expression) {
       `document.querySelector('[data-report-tab="chart"]').click()`,
     );
     await until(`document.querySelector('.assistant-chart rect')`);
+    if (symbol === "2883") {
+      assert.ok(
+        await evaluate(
+          `document.querySelectorAll('[data-technical-event]').length>0`,
+        ),
+      );
+      await evaluate(
+        `document.querySelector('.assistant-chart rect[role=button]').dispatchEvent(new MouseEvent('mouseenter'))`,
+      );
+      assert.ok(
+        await evaluate(
+          `document.querySelector('.assistant-chart-readout').textContent.includes('收 ')`,
+        ),
+      );
+    }
     const first = await evaluate(
       `document.querySelector('.assistant-chart-tools span').textContent`,
     );

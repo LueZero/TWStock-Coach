@@ -14,7 +14,11 @@ flowchart LR
   Scheduler --> Source[FinMind／TWSE／TPEx／TDCC]
   Source --> Scheduler
   API --> MIS[公開即時行情快照]
-  Agent --> CLI[Codex CLI 原生 agent loop／session]
+  Agent --> Input[區間資料包＋提示詞＋報告模板]
+  Input --> API
+  Input --> CLI[Codex CLI 原生 agent loop／session]
+  CLI --> MCP[stock MCP：按需查詢]
+  MCP --> API
   CLI --> Agent
   Agent --> Files[reports：Markdown／JSON]
 ```
@@ -30,11 +34,13 @@ flowchart LR
 | scheduler | Compose scheduler／node api/cli.js schedule | PostgreSQL 股票工作佇列                 |
 | agent     | 本機 npm run assistant:start                | reports 檔案及本機 Codex 認證／會話目錄 |
 
-Agent 是常駐 Node.js 橋接服務；Codex CLI 僅在分析或追問時啟動。Agent 不連資料庫，也不直接呼叫股票 API；前端先從 POST /api/research/report-input 取得固定資料包，再提交給 Agent。CLI 使用原生 agent loop，平台不再另建一套分析循環。AI 服務最多執行一個 CLI 子程序，忙碌時拒絕新工作，不建立持久佇列。
+Agent 是常駐 Node.js 橋接服務；Codex CLI 僅在分析或追問時啟動。Agent 不連資料庫；前端先從 POST /api/research/report-input 建立畫面基準，再提交給 Agent。Agent 依股票、分析起日與截止重新查詢 API，先提交各面向資料、問題與模板，不使用客戶端數值代替實際查詢。Codex 可透過 stdio MCP 工具補查細節。CLI 使用原生 agent loop，平台不另建一套分析循環。AI 服務最多執行一個 CLI 子程序，忙碌時拒絕新工作，不建立持久佇列。
 
 ## 程式責任
 
 股票排程與 AI Agent 各有獨立責任。下表對應目前程式位置；AI 報告操作與檢核見[功能設計](FEATURES.md#ai-分析報告)。
+
+研究報告由 `report-observations.js` 統一商品／產業口徑、法人日期及技術觀測，`report-conditions.js` 產出固定策略與逐項檢核。`agent/AGENTS.md` 維護共同規則，`agent/templates/report-template.md` 定義輸出結構，`report-input.js` 預先整理資料，`agent/tools.js` 封裝既有 API，`mcp-server.js` 使用官方 MCP SDK 提供工具。CLI 自主呼叫 stock 工具；shell、搜尋與其他 MCP 禁止，不另開第二套 agent loop。新規則只影響新報告，既有 Markdown／JSON 與 session 保留原輸入和版本，不回寫過去報告。
 
 | 位置                                                              | 責任                                                     |
 | ----------------------------------------------------------------- | -------------------------------------------------------- |
@@ -54,6 +60,16 @@ Agent 是常駐 Node.js 橋接服務；Codex CLI 僅在分析或追問時啟動�
 | agent/index.js、server.js、codex-adapter.js、report-store.js      | 獨立 HTTP 橋接、訂閱 CLI、原生 session 與檔案報告        |
 | web/src/models、views、controllers                                | 前端狀態、DOM／SVG呈現、互動與請求取消                   |
 | web/src/views/orderbook-view.js                                   | 個股與期貨共用五檔、深度色帶、缺值與委託合計             |
+
+## AI 工具邊界
+
+每次 CLI 啟動建立暫存研究工作目錄，複製 `AGENTS.md`，並透過執行參數註冊唯一的 `stock` stdio MCP。工具不接受任意 URL、SQL、股票代號或截止時間；自動模式可傳start選擇截止前一年內起日，手動模式禁止更改起日，股票與截止由服務注入，API 位址由 `ASSISTANT_STOCK_API_URL` 管理。工具僅使用既有研究資料、財務與籌碼查詢功能，不暴露匯入、擷取排程、下單或任意命令。MCP 程序隨 CLI 的 stdin 關閉停止。
+
+`get_stock_data` 的各面向在同一次執行共用 API 研究快照，避免跨工具時間漂移；完整財務與籌碼子頁再按需呼叫既有 GET 路由。日K指標重用 `api/indicators.js`，先暖機再截取區間。AI分析前準備資料時，將已取得的區間明細完整提交，不因前台或工具分頁只取第一頁。模型補查仍保留分頁：技術從最新往回查，財務歷史與籌碼明細從第一頁往後查，均返回總筆數與下一頁狀態。來源缺漏仍明示，輸入超出上限會要求縮小區間，不悄悄截斷。來源修訂明細完整保存，但不重複送入模型。
+
+工具事實使用每次查詢專屬的證據 ID，追問不會引用到同名的舊數值。模型輸出的引用與金額只對本次成功查詢驗證；未查資料的回答不保存為完成分析。查詢成功與失敗均隨報告 JSON 保存，取消或執行失敗也保留已完成的查詢紀錄。原始圖表／條件與後續回答的查詢時點分別保存，不覆寫舊報告。
+
+產業欄位使用股票目錄的實際值，不另由 API 正規表示式二分或附上固定財務結論。研究資料的 `financial:coverage` 保存本次查詢是否成功、來源覆蓋及每项指標的可用性；產業分析由報告模板與AI依實際產業判讀，缺漏敘述需核對本次工具結果。新報告不再包含 `sectorProfile` 的 `focus`／`limitation`。
 
 ## 儲存契約
 

@@ -17,11 +17,15 @@ const names = {
 };
 const technicalNames = {
   ma5: "5日均線",
+  ma10: "10日均線",
   ma20: "20日均線",
   ma60: "60日均線",
+  ma120: "120日均線",
   ma240: "240日均線",
   rsi14: "RSI14",
   macd_histogram: "MACD柱狀值",
+  macd: "MACD快慢線差",
+  macd_signal: "MACD訊號線",
   volume_ratio: "相對前20日量比",
   atr14: "ATR14波動幅度",
   k: "KD K值",
@@ -37,14 +41,176 @@ function button(text, action) {
   return b;
 }
 let graph = { report: null, count: 60, offset: 0 };
-export function renderMessages(messages = []) {
+export function readableAnswer(text, evidence = []) {
+  const ids = new Set(evidence.map((e) => e.id));
+  return String(text).replace(/\[([^\[\]]+)\]/g, (match, refs) =>
+    refs.split(/[、,，]\s*/).every((id) => ids.has(id.trim())) ? "" : match,
+  );
+}
+function explain(target, text, evidence) {
+  for (const paragraph of readableAnswer(text, evidence).split(/\n\s*\n/)) {
+    const [heading, ...lines] = paragraph.split("\n");
+    if (lines.length && heading.length <= 24) {
+      target.append(
+        element("h4", heading),
+        element("p", lines.join("\n"), "assistant-summary-text"),
+      );
+    } else target.append(element("p", paragraph, "assistant-summary-text"));
+  }
+}
+function renderResearchCards(target, ai, evidence, actions) {
+  const nav = element("nav", null, "assistant-report-nav");
+  nav.setAttribute("aria-label", "報告快速導覽");
+  const jump = (selector) => {
+    const card = target.querySelector(selector);
+    if (card)
+      target.scrollTo({
+        top:
+          target.scrollTop +
+          card.getBoundingClientRect().top -
+          target.getBoundingClientRect().top -
+          nav.offsetHeight -
+          12,
+        behavior: "smooth",
+      });
+  };
+  nav.append(button("下一步", () => jump(".assistant-action-grid")));
+  for (const [id, label] of [
+    ["technical", "走勢"],
+    ["basic", "公司"],
+    ["financial", "財務"],
+    ["chips", "籌碼"],
+    ["peers", "同業"],
+    ["news", "新聞"],
+    ["market", "大盤"],
+  ])
+    nav.append(button(label, () => jump(`[data-research-section="${id}"]`)));
+  target.append(nav);
+  if (ai.analysis_windows?.length) {
+    const windows = element("details", null, "assistant-report-windows");
+    windows.append(
+      element("summary", `實際查詢期間 · ${ai.analysis_windows.length} 個範圍`),
+    );
+    for (const w of ai.analysis_windows)
+      windows.append(element("span", `${w.start} ～ ${w.end} · ${w.purpose}`));
+    target.append(windows);
+  }
+  if (ai.action_plan?.length) {
+    target.append(element("h3", "你可以怎麼做", "assistant-section-heading"));
+    const plans = element("div", null, "assistant-action-grid");
+    const labels = {
+      entry: "還沒買：先等什麼",
+      holding: "已持有：如何觀察",
+      exit: "想退出：何時重評估",
+    };
+    const planTabs = element("div", null, "assistant-action-tabs");
+    planTabs.setAttribute("aria-label", "選擇想了解的持有情況");
+    const showPlan = (id) => {
+      for (const card of plans.children)
+        card.hidden = card.dataset.action !== id;
+      for (const control of planTabs.children)
+        control.setAttribute(
+          "aria-pressed",
+          String(control.dataset.action === id),
+        );
+    };
+    for (const plan of ai.action_plan) {
+      const card = element("article", null, "assistant-action-card " + plan.id);
+      card.dataset.action = plan.id;
+      const control = button(
+        { entry: "還沒買", holding: "持有中", exit: "退出觀察" }[plan.id],
+        () => showPlan(plan.id),
+      );
+      control.dataset.action = plan.id;
+      planTabs.append(control);
+      card.append(element("h4", labels[plan.id]));
+      for (const [label, key] of [
+        ["先看條件", "condition"],
+        ["下一步", "action"],
+        ["看法失效時", "invalidation"],
+      ]) {
+        const field = element("div", null, "assistant-report-field");
+        field.append(
+          element("span", label),
+          element("p", readableAnswer(plan[key], evidence)),
+        );
+        card.append(field);
+      }
+      card.append(
+        button("查看判斷依據", () => actions.evidence(plan.evidence_ids)),
+      );
+      plans.append(card);
+    }
+    showPlan("entry");
+    target.append(planTabs, plans);
+  }
+  if (ai.sections?.length) {
+    target.append(element("h3", "為什麼這樣判斷", "assistant-section-heading"));
+    const cards = element("div", null, "assistant-research-grid");
+    const labels = {
+      technical: "技術走勢",
+      basic: "公司與產業",
+      financial: "財務與估值",
+      chips: "籌碼動向",
+      peers: "同業比較",
+      news: "新聞與討論",
+      market: "大盤環境",
+    };
+    for (const [index, section] of ai.sections.entries()) {
+      const card = element("article", null, "assistant-research-card");
+      card.dataset.researchSection = section.id;
+      card.append(
+        element(
+          "span",
+          `${String(index + 1).padStart(2, "0")} · ${labels[section.id]}`,
+          "assistant-card-kicker",
+        ),
+        element("h4", section.title),
+        element(
+          "p",
+          readableAnswer(section.takeaway, evidence),
+          "assistant-card-takeaway",
+        ),
+      );
+      for (const [label, key] of [
+        ["資料怎麼說", "reason"],
+        ["接下來看什麼", "watch"],
+      ]) {
+        const field = element("div", null, "assistant-report-field");
+        field.append(
+          element("span", label),
+          element("p", readableAnswer(section[key], evidence)),
+        );
+        card.append(field);
+      }
+      card.append(
+        button("查看資料來源", () => actions.evidence(section.evidence_ids)),
+      );
+      cards.append(card);
+    }
+    target.append(cards);
+  }
+  if (ai.cautions?.length) {
+    const limits = element("aside", null, "assistant-report-limits");
+    limits.append(element("h4", "這次判斷有哪些限制"));
+    const list = element("ul");
+    for (const caution of ai.cautions)
+      list.append(element("li", readableAnswer(caution, evidence)));
+    limits.append(list);
+    target.append(limits);
+  }
+}
+export function renderMessages(messages = [], evidence = []) {
   const target = $("assistantMessages");
   target.replaceChildren();
   for (const m of messages) {
     const bubble = element("div", null, `assistant-bubble ${m.role}`);
     bubble.append(
-      element("small", m.role === "user" ? "你" : "看盤助手 · 固定本報告資料"),
-      element("div", m.content.answer || m.content.text || ""),
+      element("small", m.role === "user" ? "你" : "看盤助手 · 依查詢時點分析"),
+      element(
+        "div",
+        readableAnswer(m.content.answer || m.content.text || "", evidence),
+      ),
     );
     target.append(bubble);
   }
@@ -69,17 +235,22 @@ export function renderAssistantReport(report, tab, actions) {
     return;
   }
   $("assistantMeta").textContent =
-    `${report.meta.mode === "historical" ? "當時可得資料" : "最新資料包"} · 日K／原始價格 · 行情 ${report.meta.data_date || "不足"} · 截止 ${new Date(report.meta.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })} · ${report.ai ? "AI解讀完成" : "平台條件報告"}`;
+    `${report.meta.mode === "historical" ? "當時可得資料" : "最新資料包"} · 日K／原始價格 · 行情 ${report.meta.data_date || "不足"} · 截止 ${new Date(report.meta.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })} · ${report.ai ? "AI解讀完成" : "等待AI分析"}`;
   if (tab === "summary") {
-    target.append(
-      element(
-        "div",
-        report.status_label,
-        "assistant-summary-state " + report.status,
-      ),
+    const hero = element("article", null, "assistant-report-hero");
+    hero.append(
+      element("span", "AI 研究報告 · 先看結論", "assistant-card-kicker"),
+      element("h3", "AI 重點摘要"),
     );
-    for (const text of report.summary)
-      target.append(element("p", text, "assistant-summary-text"));
+    explain(
+      hero,
+      report.ai?.summary ||
+        (report.ai
+          ? "此舊版報告未單獨產生AI摘要，請閱讀下方AI解讀。"
+          : "正在整理資料與產生AI摘要，完成後顯示分析結論。"),
+      report.evidence,
+    );
+    target.append(hero);
     const downloads = element("div", null, "assistant-chart-tools");
     for (const [format, label] of [
       ["md", "下載Markdown報告"],
@@ -90,7 +261,6 @@ export function renderAssistantReport(report, tab, actions) {
       a.setAttribute("download", "");
       downloads.append(a);
     }
-    target.append(downloads);
     const facets = element("div", null, "assistant-facets");
     for (const f of report.facets) {
       const item = element("div", null, "assistant-facet");
@@ -103,13 +273,50 @@ export function renderAssistantReport(report, tab, actions) {
     }
     const details = element("details", null, "assistant-facet-details");
     details.append(element("summary", "展開七個面向的資料狀態"), facets);
-    target.append(element("h3", report.ai ? "AI 白話解讀" : "AI 解讀"));
+    const inputManifest = report.ai?.input_manifest || report.input_manifest;
+    if (inputManifest?.length) {
+      const submitted = element("details", null, "assistant-facet-details");
+      submitted.append(element("summary", "查看已提交給AI的資料"));
+      const states = {
+        included: "已送入",
+        partial: "部分資料已送入",
+        missing: "缺資料／不足",
+        failed: "查詢失敗",
+      };
+      for (const m of inputManifest)
+        submitted.append(
+          element(
+            "p",
+            `${m.label}：${states[m.status] || m.status}${m.bar_count == null ? "" : ` · ${m.bar_count} 根完成日K`}${m.note ? ` · ${m.note}` : ""}`,
+          ),
+        );
+      downloads.append(submitted);
+    }
+    if (report.ai?.sections?.length)
+      renderResearchCards(target, report.ai, report.evidence, actions);
     target.append(
       element(
-        "p",
-        report.ai?.answer || "AI尚未完成；上方是平台條件計算，不是模型建議。",
-        "assistant-summary-text",
+        "h3",
+        report.ai?.sections?.length
+          ? "回答你的問題"
+          : report.ai
+            ? "AI 完整報告"
+            : "AI 報告",
+        "assistant-section-heading",
       ),
+    );
+    if (report.ai?.analysis_scope)
+      target.append(
+        element(
+          "p",
+          `本次工具查詢截止 ${new Date(report.ai.analysis_scope.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })} · ${report.ai.tool_evidence_ids?.length || 0} 筆查詢證據；圖表與程式條件保留建立報告時的版本。`,
+          "assistant-muted",
+        ),
+      );
+    explain(
+      target,
+      report.ai?.answer || "AI尚未完成，這裡不以程式摘要代替分析結論。",
+      report.evidence,
     );
     if (report.ai)
       for (const h of report.ai.highlights) {
@@ -121,14 +328,51 @@ export function renderAssistantReport(report, tab, actions) {
         target.append(item);
       }
     target.append(button("查看進出場條件", () => actions.tab("plan")));
-    target.append(details);
+    target.append(downloads, details);
   } else if (tab === "plan") {
+    if (report.observations?.length) {
+      target.append(element("h3", "看懂技術狀態"));
+      const observations = element("div", null, "assistant-observations");
+      for (const observation of report.observations) {
+        const item = element("article", null, "assistant-observation");
+        item.append(
+          element(
+            "strong",
+            observation.label,
+            "assistant-tone " + observation.state,
+          ),
+          element("p", observation.note),
+          button("查看指標依據", () =>
+            actions.evidence(observation.evidence_ids),
+          ),
+        );
+        observations.append(item);
+      }
+      target.append(observations);
+    }
     target.append(
-      element(
-        "h3",
-        report.holding ? "持倉與進出場觀察" : "未持有：進場候選條件",
-      ),
+      element("h3", report.holding ? "持倉與進出場觀察" : "技術進出場觀察條件"),
     );
+    if (report.plan_checks?.length) {
+      target.append(
+        element(
+          "p",
+          "下列是固定突破策略的條件檢核，與整體股票分析分開；缺一項不代表所有面向都沒有結論。",
+          "subtle",
+        ),
+      );
+      for (const check of report.plan_checks) {
+        const item = element("div", null, "assistant-quality");
+        item.append(
+          element(
+            "strong",
+            `${check.passed ? "✓ 已符合" : "○ 待符合"} · ${check.label}`,
+          ),
+          element("p", check.detail),
+        );
+        target.append(item);
+      }
+    }
     if (report.holding) {
       target.append(
         element(
@@ -176,10 +420,14 @@ export function renderAssistantReport(report, tab, actions) {
         item.append(element("p", condition));
       item.append(
         element("p", s.invalidation, "assistant-quality warning"),
-        element(
-          "p",
-          `成本後報酬風險比 ${money(s.net_reward_risk)} · 資金／風險可容納 ${money(s.max_shares)} 股（${money(s.max_shares / 1000)}張） · 失效價估算損失 ${money(s.risk_at_stop)} 元`,
-        ),
+        ...(s.max_shares != null
+          ? [
+              element(
+                "p",
+                `成本後報酬風險比 ${money(s.net_reward_risk)} · 資金／風險可容納 ${money(s.max_shares)} 股（${money(s.max_shares / 1000)}張） · 失效價估算損失 ${money(s.risk_at_stop)} 元`,
+              ),
+            ]
+          : []),
         element("p", s.note, "subtle"),
         button("在K線查看條件", () => actions.tab("chart")),
       );
@@ -224,11 +472,11 @@ export function renderAssistantReport(report, tab, actions) {
           ),
         );
         if (e.note) item.append(element("p", e.note));
-        if (e.rows) {
+        if (e.rows || e.data) {
           const details = element("details");
           details.append(
             element("summary", "查看來源明細"),
-            element("pre", JSON.stringify(e.rows, null, 2)),
+            element("pre", JSON.stringify(e.rows || e.data, null, 2)),
           );
           item.append(details);
         }
@@ -329,16 +577,47 @@ export function renderAssistantReport(report, tab, actions) {
     svg.classList.add("assistant-chart");
     svg.setAttribute("role", "img");
     svg.setAttribute("aria-label", "報告原始價格日K與進出場候選區域");
+    const readout = element(
+      "p",
+      "將游標移到日K，查看當日均線結構及技術事件。點選可設定歷史分析日。",
+      "assistant-chart-readout",
+    );
     target.append(
       tools,
       svg,
+      readout,
       element(
         "p",
-        "黃色虛線：候選觸發價；綠色虛線：失效價；紫色：參考目標。線是未來觀察區域，不是已發生買點。點選K線可建立該日當時可得報告。",
+        "實線：黃色MA5、藍色MA20、紫色MA60。虛線：候選觸發／失效／目標；圓點：當日技術事件。標記不等於已成交買賣點。點選K線可設定當時分析日。",
         "subtle",
       ),
       button("回個股看盤工作台", () => actions.dashboard(report)),
     );
+    if (report.observations?.length) {
+      const latest = element("div", null, "assistant-chart-tools");
+      for (const observation of report.observations.filter((o) =>
+        ["short_trend", "alignment", "macd", "kd"].includes(o.id),
+      ))
+        latest.append(
+          element(
+            "span",
+            `${observation.date} ${observation.label}`,
+            "assistant-tone " + observation.state,
+          ),
+        );
+      target.append(latest);
+    }
+    if (report.chart_annotations?.length) {
+      const events = element("details", null, "assistant-facet-details");
+      events.append(
+        element("summary", "展開完成日K的技術事件（標記不等於買賣點）"),
+      );
+      for (const mark of [...report.chart_annotations].reverse())
+        events.append(
+          element("p", `${mark.date} · ${mark.label}：${mark.note}`),
+        );
+      target.append(events);
+    }
     const draw = () => {
       svg.replaceChildren();
       const data = report.chart_bars.slice(
@@ -346,6 +625,7 @@ export function renderAssistantReport(report, tab, actions) {
         graph.offset + graph.count,
       );
       caption.textContent = `${data[0].trade_date}～${data.at(-1).trade_date} · ${data.length} 根`;
+      readout.textContent = `${data.at(-1).trade_date} · 收 ${money(data.at(-1).close)} · ${data.at(-1).technical_label || "舊報告未保存逐日技術標記"}。移到日K查看完整數值。`;
       const width = Math.max(200, svg.getBoundingClientRect().width),
         height = svg.getBoundingClientRect().height || 350,
         left = 12,
@@ -358,8 +638,11 @@ export function renderAssistantReport(report, tab, actions) {
           s.stop,
           s.target,
         ]),
-        min = Math.min(...data.map((r) => r.low), ...levels),
-        max = Math.max(...data.map((r) => r.high), ...levels),
+        averages = data
+          .flatMap((r) => [r.ma5, r.ma20, r.ma60])
+          .filter((v) => v != null),
+        min = Math.min(...data.map((r) => r.low), ...levels, ...averages),
+        max = Math.max(...data.map((r) => r.high), ...levels, ...averages),
         spread = Math.max(max - min, max * 0.01),
         low = min - spread * 0.08,
         high = max + spread * 0.08;
@@ -411,21 +694,38 @@ export function renderAssistantReport(report, tab, actions) {
           fill: "transparent",
           tabindex: 0,
           role: "button",
-          "aria-label": r.trade_date + " 收盤 " + money(r.close),
+          "aria-label":
+            r.trade_date +
+            " 收盤 " +
+            money(r.close) +
+            " " +
+            (r.technical_label || ""),
         });
+        const observe = () => {
+          const marks = (report.chart_annotations || [])
+            .filter((m) => m.date === r.trade_date)
+            .map((m) => m.label);
+          readout.textContent = `${r.trade_date} · 開 ${money(r.open)}／高 ${money(r.high)}／低 ${money(r.low)}／收 ${money(r.close)} · ${r.technical_label || "舊報告未保存逐日技術標記"}${marks.length ? " · " + marks.join("、") : ""}`;
+        };
+        hit.onmouseenter = observe;
+        hit.onfocus = observe;
         hit.onclick = () => actions.bar(r);
         hit.onkeydown = (e) => {
           if (e.key === "Enter") actions.bar(r);
         };
       });
       for (const [key, color] of [
+        ["ma5", "#eac36f"],
         ["ma20", "#73d3ed"],
         ["ma60", "#d09de6"],
       ]) {
-        let path = "";
+        let path = "",
+          connected = false;
         data.forEach((r, i) => {
-          if (r[key] != null)
-            path += (path ? "L" : "M") + x(i) + "," + y(r[key]) + " ";
+          if (r[key] != null) {
+            path += (connected ? "L" : "M") + x(i) + "," + y(r[key]) + " ";
+            connected = true;
+          } else connected = false;
         });
         node("path", {
           d: path,
@@ -434,6 +734,21 @@ export function renderAssistantReport(report, tab, actions) {
           "stroke-width": 1.4,
           "pointer-events": "none",
         });
+      }
+      for (const mark of report.chart_annotations || []) {
+        const i = data.findIndex((r) => r.trade_date === mark.date);
+        if (i < 0) continue;
+        const dot = node("circle", {
+          cx: x(i),
+          cy: y(data[i].high) - 8,
+          r: 4,
+          fill: mark.kind === "support" ? "#f27b8c" : "#53c9a2",
+          "pointer-events": "none",
+          "data-technical-event": mark.label,
+        });
+        const title = document.createElementNS(svg.namespaceURI, "title");
+        title.textContent = `${mark.date} ${mark.label}：${mark.note}`;
+        dot.append(title);
       }
       for (const s of report.scenarios)
         for (const [key, color] of [

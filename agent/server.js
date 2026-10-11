@@ -6,8 +6,8 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { createReportStore, validateId } from "./report-store.js";
-import { codexHealth, runCodex } from "./codex-adapter.js";
-import { compactReport, validateExplanation } from "./report-schema.js";
+import { codexHealth, runCodex, PROMPT_VERSION } from "./codex-adapter.js";
+import { validateExplanation } from "./report-schema.js";
 
 const fail = (message, statusCode = 422) => {
   throw Object.assign(Error(message), { statusCode });
@@ -138,18 +138,68 @@ export function createAgent({
         {
           kind,
           message: text,
-          report: compactReport(doc.report),
+          report: doc.report,
           session_id: doc.session_id || null,
         },
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          onPrepared: async (prepared) => {
+            doc.analysis_inputs = [...(doc.analysis_inputs || []), prepared];
+            doc.report.input_manifest = prepared.manifest;
+            doc.run.phase = "analyzing";
+            await store.save(doc);
+          },
+        },
       );
       if (controller.signal.aborted) throw Error("已取消分析");
-      const result = validateExplanation(response.result, doc.report);
+      const calls = response.tool_calls || [];
+      doc.tool_calls = [...(doc.tool_calls || []), ...calls];
+      for (const call of calls.filter((c) => c.status === "completed")) {
+        for (const evidence of call.evidence || [])
+          if (!doc.report.evidence.some((e) => e.id === evidence.id))
+            doc.report.evidence.push(evidence);
+        if (!doc.report.evidence.some((e) => e.id === call.evidence_id))
+          doc.report.evidence.push({
+            id: call.evidence_id,
+            category: "tool",
+            label: `${call.name} ${call.arguments.section || call.arguments.metric || call.arguments.dataset || "清單"}`,
+            as_of: call.as_of,
+            received_at: call.queried_at,
+            source: call.endpoint,
+            data: { ...call.data, evidence: call.evidence || [] },
+          });
+      }
+      const fresh = calls.filter(
+        (c) => c.status === "completed" && c.evidence_id,
+      );
+      const technical = fresh.find((c) => c.arguments.section === "technical");
+      const scenario = fresh.find((c) => c.arguments.section === "scenarios");
+      const validationReport = calls.length
+        ? {
+            evidence: fresh.flatMap((c) => [
+              { id: c.evidence_id, data: c.data },
+              ...(c.evidence || []),
+            ]),
+            metrics: technical?.data.metrics || {},
+            scenarios: scenario?.data.scenarios || [],
+            holding: scenario?.data.holding,
+            observations: technical?.data.observations || [],
+            chart_bars: [],
+            user_message: text,
+            query_windows: fresh.map((c) => ({ start: c.start, end: c.end })),
+          }
+        : doc.report;
+      const result = validateExplanation(response.result, validationReport);
       doc.session_id = response.session_id || doc.session_id || null;
       const content = {
         ...result,
         usage: response.usage,
         created_at: new Date().toISOString(),
+        analysis_scope: response.scope,
+        input_manifest: doc.analysis_inputs?.at(-1)?.manifest || [],
+        tool_evidence_ids: calls
+          .filter((c) => c.status === "completed")
+          .map((c) => c.evidence_id),
       };
       doc.messages.push({ role: "assistant", content });
       if (kind === "report")
@@ -158,7 +208,7 @@ export function createAgent({
           generated_at: content.created_at,
           provider: "Codex CLI",
           cli_version: service.version,
-          prompt_version: "stock-explanation-v2",
+          prompt_version: PROMPT_VERSION,
           model: process.env.ASSISTANT_MODEL || "CLI default",
           session_id: doc.session_id,
         };
@@ -170,6 +220,8 @@ export function createAgent({
         error: null,
       };
     } catch (e) {
+      if (e.tool_calls)
+        doc.tool_calls = [...(doc.tool_calls || []), ...e.tool_calls];
       doc.run = {
         status: controller.signal.aborted ? "cancelled" : "failed",
         kind,
@@ -256,6 +308,15 @@ export function createAgent({
       messages: doc.messages,
       run: doc.run,
       session_id: doc.session_id,
+      tool_calls: doc.tool_calls || [],
+      analysis_inputs: (doc.analysis_inputs || []).map(
+        ({ scope, manifest, template_version, prepared_at }) => ({
+          scope,
+          manifest,
+          template_version,
+          prepared_at,
+        }),
+      ),
     };
   });
   app.get("/api/assistant/reports/:id/download", async (request, reply) => {

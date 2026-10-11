@@ -1280,58 +1280,20 @@
                     <option value="historical">選取日K當時可得資料</option>
                   </select></label
                 >
-                <label>分析起日<input id="assistantStart" type="date" /></label>
-                <label
-                  >本金上限<input
-                    id="assistantCapital"
-                    type="number"
-                    min="100"
-                    value="100000"
-                /></label>
-                <label
-                  >單次風險額度<input
-                    id="assistantRisk"
-                    type="number"
-                    min="1"
-                    value="2000"
-                /></label>
-                <details class="assistant-position">
-                  <summary>持倉與費用</summary>
-                  <div>
-                    <label
-                      >持有股數<input
-                        id="assistantShares"
-                        type="number"
-                        min="0"
-                        step="1"
-                        value="0"
-                    /></label>
-                    <label
-                      >每股成本<input
-                        id="assistantCost"
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        placeholder="未持有可留空"
-                    /></label>
-                    <label
-                      >手續費折扣<input
-                        id="assistantDiscount"
-                        type="number"
-                        min="0"
-                        max="10"
-                        step="0.1"
-                        value="6"
-                    /></label>
-                    <label
-                      >最低手續費<input
-                        id="assistantMinimum"
-                        type="number"
-                        min="0"
-                        step="1"
-                        value="20"
-                    /></label>
-                  </div>
+                <details class="assistant-range-settings">
+                  <summary id="assistantRangeSummary">資料期間 · 自動</summary>
+                  <label
+                    >期間選擇<select id="assistantRangeMode">
+                      <option value="auto">AI依問題選擇與補查</option>
+                      <option value="manual">指定分析起日</option>
+                    </select></label
+                  >
+                  <label id="assistantStartLabel" hidden
+                    >分析起日<input id="assistantStart" type="date"
+                  /></label>
+                  <p>
+                    先提供近期資料；AI可依問題補查截止日前一年內資料。歷史視角維持當時截止。
+                  </p>
                 </details>
                 <label
                   >已存報告<select id="assistantHistory">
@@ -1419,7 +1381,7 @@
                       id="assistantMessage"
                       maxlength="2000"
                       rows="3"
-                      placeholder="例如：我還沒買，該等待什麼訊號？"
+                      placeholder="例如：我還沒買，該等待什麼訊號？如需個人分析，可補充本金、持股與成本。"
                     ></textarea>
                     <div>
                       <small>訊息與分析資料會送至 AI；持倉資料可選填。</small

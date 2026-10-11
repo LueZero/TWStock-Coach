@@ -142,10 +142,10 @@ async function loadReport(id) {
     messages = data.messages;
     tab = "summary";
     render();
-    renderMessages(messages);
+    renderMessages(messages, report?.evidence);
     status(
       report.ai
-        ? "已讀取AI報告；追問沿用這份固定資料包。"
+        ? "已讀取AI報告；追問會依本次查詢時點取得資料，歷史模式維持原截止。"
         : "已讀取平台條件報告。",
     );
     if (
@@ -158,16 +158,8 @@ async function loadReport(id) {
       );
     $("assistantMode").value = report.meta.mode;
     $("assistantStart").value = report.meta.start;
-    if (report.context)
-      for (const [id, k] of [
-        ["assistantCapital", "capital"],
-        ["assistantRisk", "risk_budget"],
-        ["assistantDiscount", "discount"],
-        ["assistantMinimum", "minimum_fee"],
-        ["assistantShares", "shares"],
-        ["assistantCost", "cost"],
-      ])
-        $(id).value = report.context[k] ?? "";
+    $("assistantRangeMode").value = report.meta.range_mode || "manual";
+    syncRangeControls();
     if (data.run?.status === "running") {
       jobId = data.report.id;
       poll(jobId, v, stock);
@@ -181,16 +173,12 @@ async function loadReport(id) {
     }
   }
 }
-function context() {
-  return {
-    capital: Number($("assistantCapital").value),
-    risk_budget: Number($("assistantRisk").value),
-    discount: Number($("assistantDiscount").value),
-    minimum_fee: Number($("assistantMinimum").value),
-    shares: Number($("assistantShares").value),
-    cost:
-      $("assistantCost").value === "" ? null : Number($("assistantCost").value),
-  };
+function syncRangeControls() {
+  const manual = $("assistantRangeMode").value === "manual";
+  $("assistantStartLabel").hidden = !manual;
+  $("assistantRangeSummary").textContent = manual
+    ? "資料期間 · 指定起日"
+    : "資料期間 · 自動";
 }
 function request(message) {
   const mode = $("assistantMode").value;
@@ -200,16 +188,16 @@ function request(message) {
   const body = {
     market: state.stock.market,
     symbol: state.stock.symbol,
-    start: $("assistantStart").value,
+    range_mode: $("assistantRangeMode").value,
     mode,
-    context: context(),
     message,
   };
+  if (body.range_mode === "manual") body.start = $("assistantStart").value;
   if (mode === "historical") {
     if (bar.is_final === false) throw Error("未完成K線不產生正式歷史報告");
     body.as_of = bar.end_time || bar.trade_date + "T13:30:00+08:00";
-    if (body.start > bar.trade_date)
-      body.start = shiftDay(bar.trade_date, -180);
+    if (body.start && body.start > bar.trade_date)
+      throw Error("指定起日不可晚於選取的歷史日K。");
   }
   return body;
 }
@@ -224,7 +212,11 @@ async function poll(id, v, stock) {
     const job = value.run;
     if (v !== version || stock !== key()) return;
     if (job.status === "running") {
-      status("Codex正在分析；完成後會自動保存Markdown與JSON報告。");
+      status(
+        job.phase === "analyzing"
+          ? "資料與缺漏已整理，AI正在核對各面向與進出場條件；完整報告可能需要數分鐘，完成後自動保存。"
+          : "正在整理這檔股票的平台資料，接著交給AI分析。",
+      );
       pollTimer = setTimeout(() => poll(id, v, stock), 2000);
       return;
     }
@@ -233,7 +225,7 @@ async function poll(id, v, stock) {
       report = value.report;
       messages = value.messages;
       render();
-      renderMessages(messages);
+      renderMessages(messages, report?.evidence);
       status("AI回答已驗證；追問沿用本份資料。要看最新行情請產生新報告。");
     } else
       status(
@@ -285,7 +277,7 @@ async function generate(
     tab = "summary";
     messages = [{ role: "user", content: { text: message } }];
     render();
-    renderMessages(messages);
+    renderMessages(messages, report?.evidence);
     $("assistantMessage").value = "";
     await history();
     if (data.status === "running") {
@@ -320,7 +312,7 @@ async function send() {
     const data = await api(`/reports/${report.id}/messages`, { message });
     if (v !== version || stock !== key()) return;
     messages.push({ role: "user", content: { text: message } });
-    renderMessages(messages);
+    renderMessages(messages, report?.evidence);
     $("assistantMessage").value = "";
     if (data.status === "running") {
       jobId = data.report_id;
@@ -340,6 +332,7 @@ async function send() {
 export function initAssistantController() {
   $("assistantStart").value = shiftDay(taipeiDay(), -180);
   $("assistantStart").max = taipeiDay();
+  $("assistantRangeMode").onchange = syncRangeControls;
   $("assistantLogin").onsubmit = async (e) => {
     e.preventDefault();
     try {
@@ -404,8 +397,6 @@ export function initAssistantController() {
     $("assistantTitle").textContent =
       `${state.stock.name} ${state.stock.symbol} · 個股分析報告`;
     $("assistantMeta").textContent = "產生新報告或讀取這檔股票的已存版本。";
-    $("assistantShares").value = "0";
-    $("assistantCost").value = "";
     render();
     renderMessages();
     controls();

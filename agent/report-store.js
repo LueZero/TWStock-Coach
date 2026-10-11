@@ -29,26 +29,148 @@ export function reportMarkdown(doc) {
     "",
     "## 重點摘要",
     "",
-    ...r.summary.map(markdownText),
+    markdownText(
+      r.ai?.summary ||
+        (r.ai
+          ? "此舊版報告未單獨生成AI摘要，請閱讀下方AI解讀。"
+          : "AI摘要尚未完成。"),
+    ),
     "",
     "## AI解讀",
     "",
     markdownText(r.ai?.answer ?? doc.run.error ?? "分析尚未完成"),
   ];
+  if (r.ai?.analysis_windows?.length)
+    lines.push(
+      "",
+      "## 實際分析期間",
+      "",
+      ...r.ai.analysis_windows.map(
+        (w) => `- ${w.start} ～ ${w.end}：${markdownText(w.purpose)}`,
+      ),
+    );
+  if (r.ai?.action_plan?.length) {
+    lines.push("", "## 你可以怎麼做", "");
+    const labels = {
+      entry: "還沒買：先等什麼",
+      holding: "已持有：如何觀察",
+      exit: "想退出：何時重評估",
+    };
+    for (const a of r.ai.action_plan)
+      lines.push(
+        `### ${labels[a.id]}`,
+        "",
+        `**先看條件**：${markdownText(a.condition)}`,
+        "",
+        `**下一步**：${markdownText(a.action)}`,
+        "",
+        `**看法失效時**：${markdownText(a.invalidation)}`,
+        "",
+        `依據：${a.evidence_ids.join("、")}`,
+        "",
+      );
+  }
+  if (r.ai?.sections?.length) {
+    lines.push("", "## 為什麼這樣判斷", "");
+    for (const s of r.ai.sections)
+      lines.push(
+        `### ${markdownText(s.title)}`,
+        "",
+        markdownText(s.takeaway),
+        "",
+        `**資料怎麼說**：${markdownText(s.reason)}`,
+        "",
+        `**接下來看什麼**：${markdownText(s.watch)}`,
+        "",
+        `依據：${s.evidence_ids.join("、")}`,
+        "",
+      );
+    if (r.ai.cautions?.length)
+      lines.push(
+        "## 這次判斷有哪些限制",
+        "",
+        ...r.ai.cautions.map((c) => `- ${markdownText(c)}`),
+        "",
+      );
+  }
+  if (r.ai)
+    lines.push(
+      "",
+      `本次工具查詢截止：${r.ai.analysis_scope?.as_of || r.meta.as_of}；查詢證據 ${r.ai.tool_evidence_ids?.length || 0} 筆。`,
+    );
+  const inputManifest = r.ai?.input_manifest || r.input_manifest;
+  if (inputManifest?.length)
+    lines.push(
+      "",
+      "## 提交給AI的資料",
+      "",
+      ...inputManifest.map(
+        (m) =>
+          `- ${m.label}：${m.status}；${m.evidence_count ?? 0} 項來源證據${m.bar_count == null ? "" : `；${m.bar_count} 根完成日K`}${m.note ? `；${markdownText(m.note)}` : ""}`,
+      ),
+    );
+  if (doc.tool_calls?.length)
+    lines.push(
+      "",
+      "## 工具查詢紀錄",
+      "",
+      ...doc.tool_calls.map(
+        (c) =>
+          `- ${c.name} ${JSON.stringify(c.arguments)}：${c.status}；截止 ${c.as_of}；查詢 ${c.queried_at}；${c.evidence_id || markdownText(c.error)}`,
+      ),
+    );
   if (r.ai)
     for (const h of r.ai.highlights)
       lines.push(
         "",
         `- ${markdownText(h.text)}（依據：${h.evidence_ids.join("、")}）`,
       );
+  if (r.observations?.length)
+    lines.push(
+      "",
+      "## 技術判讀",
+      "",
+      ...r.observations.flatMap((o) => [
+        `### ${markdownText(o.label)}`,
+        "",
+        markdownText(o.note),
+        "",
+        `依據：${o.evidence_ids.join("、") || "暖機不足"}`,
+        "",
+      ]),
+    );
+  if (r.meta.industry)
+    lines.push("", "## 公司產業", "", markdownText(r.meta.industry));
   lines.push("", "## 進出場條件", "");
+  if (r.plan_checks?.length)
+    lines.push(
+      ...r.plan_checks.map(
+        (c) =>
+          `- ${c.passed ? "符合" : "待符合"}：${markdownText(c.label)}；${markdownText(c.detail)}`,
+      ),
+      "",
+    );
+  if (r.chart_annotations?.length)
+    lines.push(
+      "### K線技術事件",
+      "",
+      ...r.chart_annotations.map(
+        (m) => `- ${m.date} ${markdownText(m.label)}：${markdownText(m.note)}`,
+      ),
+      "",
+    );
   for (const s of r.scenarios)
     lines.push(
       `### ${markdownText(s.label)}`,
       "",
       `觸發 ${s.trigger}／失效 ${s.stop}／參考目標 ${s.target}；${s.enabled ? "候選條件" : "停用"}；${s.confirmed ? "技術確認" : "未確認"}。`,
       "",
-      `數量上限 ${s.max_shares} 股；估算風險 ${s.risk_at_stop}；成本後報酬風險比 ${s.net_reward_risk}；參考期限 ${s.valid_until}。`,
+      ...(s.max_shares != null
+        ? [
+            `數量上限 ${s.max_shares} 股；估算風險 ${s.risk_at_stop}；成本後報酬風險比 ${s.net_reward_risk}。`,
+          ]
+        : []),
+      `參考期限 ${s.valid_until}。`,
       "",
       ...s.conditions.map(markdownText),
       "",

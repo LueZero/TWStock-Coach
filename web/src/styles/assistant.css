@@ -47,6 +47,193 @@
 .assistant-context #assistantHistory {
   max-width: 240px;
 }
+.assistant-range-settings {
+  max-width: 340px;
+  border: 1px solid #37516c;
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: #c9deeb;
+}
+.assistant-range-settings summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.assistant-range-settings label {
+  margin-top: 12px;
+}
+.assistant-range-settings p {
+  color: #9fb9cd;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 10px 0 0;
+}
+#assistantStartLabel[hidden] {
+  display: none;
+}
+.assistant-report-hero {
+  padding: 24px;
+  border: 1px solid #397089;
+  border-radius: 14px;
+  background: linear-gradient(130deg, #163950, #102036 72%);
+  margin-bottom: 22px;
+}
+.assistant-report-hero h3 {
+  margin: 10px 0 14px;
+  font-size: 25px;
+}
+.assistant-report-hero .assistant-summary-text {
+  font-size: 19px;
+  line-height: 1.85;
+  margin: 0;
+  color: #edf8ff;
+}
+.assistant-card-kicker {
+  color: #8fd8e9;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.assistant-section-heading {
+  font-size: 22px;
+  margin: 28px 0 16px;
+}
+.assistant-report-windows {
+  display: block;
+  margin: 14px 0;
+}
+.assistant-report-windows summary {
+  cursor: pointer;
+  color: #a9cddd;
+  font-size: 14px;
+}
+.assistant-report-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #0c1727;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+}
+.assistant-report-nav button {
+  border-radius: 20px;
+  padding: 7px 12px;
+}
+.assistant-report-windows span {
+  display: block;
+  margin-top: 8px;
+  padding: 7px 10px;
+  background: #142b3d;
+  color: #b8d5e7;
+  border-radius: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.assistant-action-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+.assistant-action-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.assistant-action-tabs button[aria-pressed="true"] {
+  background: #20445a;
+  border-color: #79bad6;
+  color: #eefaff;
+}
+.assistant-action-card[hidden] {
+  display: none;
+}
+.assistant-research-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+.assistant-action-card,
+.assistant-research-card {
+  border: 1px solid #304e68;
+  border-radius: 12px;
+  padding: 20px;
+  background: #112238;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.assistant-action-card {
+  border-top: 3px solid #7ab8dc;
+}
+.assistant-action-card.entry {
+  border-top-color: #fb8ea0;
+}
+.assistant-action-card.exit {
+  border-top-color: #e8ba75;
+}
+.assistant-research-card h4,
+.assistant-action-card h4 {
+  font-size: 19px;
+  margin: 10px 0 16px;
+  line-height: 1.5;
+}
+.assistant-card-takeaway {
+  color: #f0f7fc;
+  font-size: 18px;
+  line-height: 1.8;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #29445f;
+}
+.assistant-report-field {
+  margin: 16px 0;
+}
+.assistant-report-field > span {
+  display: block;
+  color: #91b5cc;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.assistant-report-field p {
+  color: #d2e1ec;
+  line-height: 1.85;
+  font-size: 16px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+.assistant-report-limits {
+  padding: 18px 20px;
+  margin-top: 22px;
+  border: 1px solid #655940;
+  border-radius: 12px;
+  background: #27271f;
+  color: #e5d5b6;
+  line-height: 1.85;
+}
+.assistant-report-limits h4 {
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+.assistant-report-limits ul {
+  margin: 0;
+  padding-left: 20px;
+}
+@media (max-width: 1200px) {
+  .assistant-action-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .assistant-research-grid {
+    grid-template-columns: 1fr;
+  }
+  .assistant-report-hero {
+    padding: 18px;
+  }
+  .assistant-research-card,
+  .assistant-action-card {
+    padding: 17px;
+  }
+}
 .assistant-position {
   position: relative;
   color: #c3d9e7;
@@ -113,6 +300,24 @@
   border-radius: 12px;
   background: #0c1727;
   overflow: hidden;
+}
+.assistant-observations {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.assistant-observation {
+  padding: 14px;
+  border: 1px solid #2b435d;
+  border-radius: 10px;
+  background: #102036;
+}
+.assistant-observation p,
+.assistant-chart-readout {
+  font-size: 15px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 .assistant-tabs {
   display: flex;

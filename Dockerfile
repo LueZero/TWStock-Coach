@@ -5,7 +5,6 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --workspaces=false && npm cache clean --force
 COPY --chown=node:node api api
 COPY --chown=node:node scripts scripts
-COPY --chown=node:node tests tests
 USER node
 EXPOSE 8000
 CMD ["node", "api/index.js"]

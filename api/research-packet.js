@@ -4,6 +4,11 @@ import { view as chips } from "./equity.js";
 import { report as peers } from "./peers.js";
 import { tradingRange } from "./trading.js";
 import {
+  assetType,
+  institutionObservation,
+  chronological,
+} from "./report-observations.js";
+import {
   addDays,
   taipeiDay,
   validDate,
@@ -24,33 +29,10 @@ export function validateAssistantInput(input = {}) {
     start = validDate(input.start || addDays(end, -180));
   if (start > end || Date.parse(end) - Date.parse(start) > 366 * 86400000)
     fail("報告區間需由早到晚，最多一年");
+  // Personal trading assumptions belong to the user prompt, not platform defaults.
   const context = {};
-  for (const [key, defaultValue, min, max] of [
-    ["capital", 100000, 100, 100000000],
-    ["risk_budget", 2000, 1, 10000000],
-    ["discount", 6, 0, 10],
-    ["minimum_fee", 20, 0, 100000],
-    ["shares", 0, 0, 100000000],
-    ["cost", null, 0.01, 1000000],
-  ]) {
-    const value = input.context?.[key] ?? defaultValue;
-    if (value === null) {
-      context[key] = null;
-      continue;
-    }
-    if (
-      typeof value !== "number" ||
-      !Number.isFinite(value) ||
-      value < min ||
-      value > max
-    )
-      fail("持倉／費用設定不符：" + key);
-    if (["shares", "minimum_fee"].includes(key) && !Number.isInteger(value))
-      fail(key + "需為整數");
-    context[key] = value;
-  }
-  if (context.shares > 0 && context.cost == null)
-    fail("請提供持倉成本，或將持股數設為0");
+  const range_mode = input.range_mode ?? (input.start ? "manual" : "auto");
+  if (!["auto", "manual"].includes(range_mode)) fail("資料期間模式不符");
   const message = input.message ?? "分析目前狀態、進出場觀察條件與資料限制。";
   if (typeof message !== "string" || !message.trim() || message.length > 2000)
     fail("訊息需為1至2000字");
@@ -62,6 +44,7 @@ export function validateAssistantInput(input = {}) {
     start,
     end,
     context,
+    range_mode,
     message: message.trim(),
   };
 }
@@ -77,6 +60,13 @@ export async function buildSnapshot(input) {
   );
   const instrument = instruments[0];
   if (!instrument) fail("請先搜尋股票，載入股票目錄");
+  evidence.push({
+    id: "company:profile",
+    category: "financial",
+    label: "公司與產業資料",
+    company_name: instrument.name,
+    industry: instrument.industry,
+  });
   const snapshots = await rows(
     `SELECT data FROM (
     SELECT DISTINCT ON (bar_id) bar_id,revision,data FROM (
@@ -119,6 +109,22 @@ export async function buildSnapshot(input) {
   ]);
   const finance = tasks[0].status === "fulfilled" ? tasks[0].value : null;
   const equity = tasks[1].status === "fulfilled" ? tasks[1].value : null;
+  evidence.push({
+    id: "financial:coverage",
+    category: "financial",
+    label: "本次財務資料覆蓋",
+    status: finance ? "queried" : "unavailable",
+    as_of: q.as_of,
+    rows: finance?.coverage || [],
+    metrics: (finance?.metrics || []).map((m) => ({
+      key: m.key,
+      label: m.label,
+      available: m.value != null,
+      period: m.period,
+      datasets: m.datasets,
+    })),
+    note: finance?.note || "本次財務查詢失敗，無法確認資料覆蓋。",
+  });
   const peer = tasks[2].status === "fulfilled" ? tasks[2].value : null;
   // Peers currently use end-of-day receipts; exclude references beyond the actual cutoff.
   const peerAllowed = peer && Date.parse(peer.as_of) <= Date.parse(q.as_of);
@@ -131,7 +137,7 @@ export async function buildSnapshot(input) {
       });
   });
   if (finance)
-    for (const m of finance.metrics.filter((m) => m.value != null).slice(0, 45))
+    for (const m of finance.metrics.filter((m) => m.value != null))
       evidence.push({
         id: "financial:" + m.key,
         category: "financial",
@@ -144,26 +150,91 @@ export async function buildSnapshot(input) {
         source: finance.coverage.filter((c) => m.datasets?.includes(c.dataset)),
         note: m.note,
       });
-  const assessments =
-    finance?.metrics.filter(
-      (m) =>
-        [
-          "revenue_yoy",
-          "net_margin",
-          "operating_margin",
-          "debt_ratio",
-          "operating_cash_flow",
-        ].includes(m.key) && m.value != null,
-    ) ?? [];
+  if (finance) {
+    for (const key of [
+      "revenue",
+      "eps",
+      "roe_quarter",
+      "pbr",
+      "per",
+      "dividend_yield",
+    ]) {
+      const history = [...(finance.history?.[key] || [])].sort((a, b) =>
+        a.period.localeCompare(b.period),
+      );
+      const prior = history.filter((r) => r.period < q.start).at(-1);
+      const points = history
+        .filter(
+          (r) => (r.period >= q.start && r.period <= q.end) || r === prior,
+        )
+        .map((r) => {
+          const index = history.indexOf(r),
+            previous = history[index - 1];
+          return {
+            ...r,
+            reference_before_start: r.period < q.start,
+            previous_period: previous?.period || null,
+            difference:
+              r.value != null && previous?.value != null
+                ? Number((r.value - previous.value).toFixed(10))
+                : null,
+          };
+        });
+      const metric = finance.metrics.find((m) => m.key === key);
+      if (points.length)
+        evidence.push({
+          id: `financial:history:${key}`,
+          category: "financial",
+          label: `${metric?.label || key}區間歷史與前期參考`,
+          unit: metric?.unit,
+          rows: points,
+          source: finance.coverage.filter((c) =>
+            metric?.datasets?.includes(c.dataset),
+          ),
+          note: "期間依來源；不保證連續，缺季／股數基準不同不能自行加總TTM。",
+        });
+    }
+    if (finance.dividends?.length)
+      evidence.push({
+        id: "financial:dividends",
+        category: "financial",
+        label: "最近股利事件",
+        rows: finance.dividends,
+        source: finance.coverage.filter(
+          (c) => c.dataset === "TaiwanStockDividend",
+        ),
+        note: "逐筆事件，不把最新一筆當全年；公告、除息、發放與盈餘年度分開。",
+      });
+  }
+  const availableMetrics =
+    finance?.metrics.filter((m) => m.value != null) ?? [];
   facets.push({
     id: "financial",
     label: "基本與財務",
-    state: assessments.length ? "neutral" : "missing",
-    note: assessments.length
-      ? "各財務科目需按同季／月比較，不以單一數值評為買入。"
-      : "沒有足夠財務指標可判斷。",
+    state: availableMetrics.length ? "neutral" : "missing",
+    note: availableMetrics.length
+      ? [
+          `本次取得 ${availableMetrics.length} 項非空財務指標；逐項期間與來源見資料覆蓋。`,
+          ...finance.metrics
+            .filter(
+              (m) =>
+                ["eps", "revenue_yoy", "pbr"].includes(m.key) &&
+                m.value != null,
+            )
+            .map(
+              (m) =>
+                `${m.label} ${Number(m.value).toFixed(2)} ${m.unit}（${m.period}）`,
+            ),
+        ].join("；")
+      : finance
+        ? "本次財務指標均無數值，來源狀態見資料覆蓋。"
+        : "本次財務查詢失敗，無法確認資料覆蓋。",
   });
-  const institutions = equity?.workspace?.institutions ?? [];
+  const institution = institutionObservation(
+    equity?.workspace?.institutions ?? [],
+    expected_last_day,
+  );
+  const institutions = institution.rows;
   if (equity)
     for (const m of equity.metrics.filter((m) => m.value != null))
       evidence.push({
@@ -194,23 +265,22 @@ export async function buildSnapshot(input) {
           id: "chips:dataset:" + key,
           category: "chips",
           label,
-          rows: data.slice(-5),
+          rows: chronological(data),
           source: equity.coverage.filter((c) => c.status === "available"),
-          note: "資料摘取最後5筆，不代表完整排行；頻率依各列日期。",
+          note: "已取得的區間明細；頻率依各列日期，來源缺漏不補零。",
         });
     }
-  const lastInstitution = institutions.at(-1);
+  const lastInstitution = institution.last;
   if (lastInstitution)
     evidence.push({
       id: "chips:institutions",
       category: "chips",
-      label: "法人最近10筆交易日",
-      rows: institutions.slice(-10),
+      label: "法人區間已取得交易日（由早至晚）",
+      rows: institutions,
       note: "缺漏交易日不當0，股數與外資持股比率不同。",
     });
-  const institutionDate = lastInstitution?.date || lastInstitution?.trade_date;
-  const institutionFresh =
-    !!institutionDate && institutionDate === expected_last_day;
+  const institutionDate = institution.date;
+  const institutionFresh = institution.fresh;
   if (lastInstitution && !institutionFresh)
     quality.push({
       severity: "warning",
@@ -219,17 +289,8 @@ export async function buildSnapshot(input) {
   facets.push({
     id: "chips",
     label: "籌碼觀察",
-    state:
-      lastInstitution?.total == null || !institutionFresh
-        ? "missing"
-        : lastInstitution.total > 0
-          ? "support"
-          : lastInstitution.total < 0
-            ? "oppose"
-            : "neutral",
-    note: lastInstitution
-      ? `最新法人觀測 ${lastInstitution.date || lastInstitution.trade_date}，只代表該日淨流量。`
-      : "未取得法人交易資料。",
+    state: institution.state,
+    note: institution.note,
   });
   for (const c of [...(finance?.coverage || []), ...(equity?.coverage || [])])
     if (c.status !== "available")
@@ -260,10 +321,11 @@ export async function buildSnapshot(input) {
     });
   let marketCount = 0,
     newsCount = 0;
+  const newsItems = new Map();
   for (const s of external) {
     if (
       s.source_key.startsWith("index-month:") &&
-      (s.source_key.slice(12, 19) < addDays(q.end, -40).slice(0, 7) ||
+      (s.source_key.slice(12, 19) < q.start.slice(0, 7) ||
         s.source_key.slice(12, 19) > q.end.slice(0, 7))
     )
       continue;
@@ -275,16 +337,17 @@ export async function buildSnapshot(input) {
             ? r.published_at.slice(0, 10)
             : taipeiDay(r.published_at);
         return (
-          day >= addDays(q.end, -7) &&
+          day >= q.start &&
           day <= q.end &&
           (r.timezone_known === false ||
             Date.parse(r.published_at) <= Date.parse(q.as_of))
         );
       });
-      for (const item of items.slice(0, 6)) {
-        if (newsCount >= 18) break;
-        evidence.push({
-          id: `news:${s.id}:${newsCount++}`,
+      for (const item of items) {
+        const key = item.url || `${item.published_at}:${item.title}`;
+        if (newsItems.has(key)) continue;
+        newsItems.set(key, {
+          id: `news:${s.id}:${newsItems.size}`,
           category: "news",
           label: item.title.slice(0, 200),
           url: item.url,
@@ -320,7 +383,7 @@ export async function buildSnapshot(input) {
         });
       }
     } else if (s.source_key.startsWith("market-chips:")) {
-      if (s.data.date >= addDays(q.end, -7) && s.data.date <= q.end)
+      if (s.data.date >= q.start && s.data.date <= q.end)
         evidence.push({
           id: `market:chips:${s.id}`,
           category: "market",
@@ -332,15 +395,15 @@ export async function buildSnapshot(input) {
           note: "全市場盤後統計，不代表單一契約夜盤。",
         });
     } else if (s.source_key.startsWith("index-month:")) {
-      const data = (s.data.data || [])
-        .filter((r) => r.trade_date <= q.end)
-        .slice(-20);
+      const data = (s.data.data || []).filter(
+        (r) => r.trade_date >= q.start && r.trade_date <= q.end,
+      );
       if (data.length) {
         marketCount++;
         evidence.push({
           id: `market:index:${s.id}`,
           category: "market",
-          label: "加權指數最近20筆收盤",
+          label: "區間已取得加權指數收盤",
           rows: data,
           received_at: s.received_at,
           snapshot_id: s.id,
@@ -349,6 +412,17 @@ export async function buildSnapshot(input) {
       }
     }
   }
+  const selectedNews = [...newsItems.values()].sort(
+    (a, b) => Date.parse(b.date) - Date.parse(a.date),
+  );
+  newsCount = selectedNews.length;
+  evidence.push(
+    ...selectedNews.map((e) => ({
+      ...e,
+      sample_total: newsItems.size,
+      sample_truncated: newsItems.size > selectedNews.length,
+    })),
+  );
   facets.push(
     {
       id: "market",
@@ -363,38 +437,48 @@ export async function buildSnapshot(input) {
       label: "新聞與討論",
       state: newsCount ? "neutral" : "missing",
       note: newsCount
-        ? "僅引用最近已保存標題；不是完整新聞或情緒評分。"
+        ? `引用分析区間已保存的 ${newsCount} 則去重標題；不因畫面分頁截取；來源本身不保證完整新聞，也不是情緒評分。`
         : "新聞未取得或不具歷史時間證據，可先載入熱門新聞。",
     },
   );
+  const comparablePeers = peerAllowed
+    ? peer.rows.filter((r) => !r.selected && r.available > 0)
+    : [];
   if (peerAllowed)
     evidence.push({
       id: "peers:comparison",
       category: "peers",
       label: peer.selection_basis.label,
-      rows: peer.rows.filter((r) => r.selected || r.business_peer).slice(0, 8),
+      rows: [
+        ...peer.rows.filter((r) => r.selected),
+        ...comparablePeers.sort(
+          (a, b) =>
+            Number(b.business_peer) - Number(a.business_peer) ||
+            b.available - a.available,
+        ),
+      ],
       fields: peer.fields,
+      medians: peer.medians,
+      comparable_count: comparablePeers.length,
       as_of: peer.as_of,
       note: peer.note,
     });
   facets.push({
     id: "peers",
     label: "同業比較",
-    state: peerAllowed ? "neutral" : "missing",
-    note: peerAllowed
-      ? "共同財务期間比較；無資料同業不列為支持。"
-      : "同業資料不具本次截止時間證據。",
+    state: comparablePeers.length ? "neutral" : "missing",
+    note: comparablePeers.length
+      ? `有 ${comparablePeers.length} 家同業具部分數值；逐指標仍需核對共同期間與樣本。`
+      : peerAllowed
+        ? "目前只有本檔或同業數值缺漏，不能判斷相對便宜；缺漏不表示公司不好。"
+        : "同業資料不具本次截止時間證據。",
   });
   quality.push({
     severity: "info",
     label:
       "財報公告時間未完整驗證，依平台首次接收決定可得性；資料包不含盤中正式買賣訊號。",
   });
-  const asset =
-    /ETF|指數|基金/.test(instrument.industry + instrument.name) ||
-    /^0\d{3,}/.test(q.symbol)
-      ? "etf"
-      : "stock";
+  const asset = assetType(q.symbol, instrument.industry);
   return {
     ...q,
     name: instrument.name,

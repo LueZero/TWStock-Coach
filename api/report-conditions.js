@@ -1,13 +1,12 @@
 import { calculate, VERSION as indicatorVersion } from "./indicators.js";
+import { scenarioPrice, tickCents, moveTicks } from "./calculator.js";
+import { addDays, num } from "./lib.js";
 import {
-  scenarioPrice,
-  tickCents,
-  moveTicks,
-  calculate as tradeCost,
-} from "./calculator.js";
-import { addDays, taipeiDay, num } from "./lib.js";
+  technicalObservations,
+  chartAnnotations,
+} from "./report-observations.js";
 
-export const RULE_VERSION = "report-swing-v1";
+export const RULE_VERSION = "report-swing-v3";
 export function legalPrice(value, asset = "stock", direction = "nearest") {
   if (!(value > 0) || value > 1000000) return null;
   let cents = Math.round(value * 100);
@@ -37,10 +36,14 @@ export function buildRuleReport(packet) {
     ? Object.fromEntries(
         [
           "ma5",
+          "ma10",
           "ma20",
           "ma60",
+          "ma120",
           "ma240",
           "rsi14",
+          "macd",
+          "macd_signal",
           "macd_histogram",
           "volume_ratio",
           "atr14",
@@ -74,7 +77,7 @@ export function buildRuleReport(packet) {
         label: key,
         value,
         unit: ["rsi14", "k", "d"].includes(key)
-          ? "%"
+          ? "指標值"
           : key === "volume_ratio"
             ? "倍"
             : "元",
@@ -136,42 +139,6 @@ export function buildRuleReport(packet) {
     const target =
       stop > 0 ? legalPrice(trigger + 2 * (trigger - stop), asset, "up") : null;
     if (trigger && stop > 0 && target > trigger && trend !== "oppose") {
-      let maxShares = 0;
-      const holding = packet.context;
-      const costFor = (qty, sell) =>
-        tradeCost(
-          {
-            trade_date: packet.end,
-            asset,
-            mode: "roundtrip",
-            quantity: qty,
-            unit: "shares",
-            buy_price: trigger,
-            sell_price: sell,
-            discount: holding.discount,
-            minimum_fee: holding.minimum_fee,
-          },
-          false,
-        );
-      let lo = 0,
-        hi = Math.min(10000000, Math.floor(holding.capital / trigger));
-      while (lo < hi) {
-        const mid = Math.floor((lo + hi + 1) / 2),
-          cost = costFor(mid, stop);
-        if (
-          -Number(cost.net_profit) <= holding.risk_budget &&
-          -Number(cost.legs[0].cash_flow) <= holding.capital
-        )
-          lo = mid;
-        else hi = mid - 1;
-      }
-      maxShares = lo;
-      const loss = maxShares ? costFor(maxShares, stop) : null,
-        gain = maxShares ? costFor(maxShares, target) : null;
-      const ratio =
-        loss && Number(loss.net_profit) < 0
-          ? Number(gain.net_profit) / -Number(loss.net_profit)
-          : null;
       scenarios.push({
         id: "breakout",
         label: "突破確認觀察",
@@ -179,10 +146,7 @@ export function buildRuleReport(packet) {
         stop,
         target,
         confirmed: breakout,
-        enabled: maxShares > 0 && ratio >= 1.5,
-        max_shares: maxShares,
-        risk_at_stop: loss ? -Number(loss.net_profit) : null,
-        net_reward_risk: ratio,
+        enabled: true,
         valid_until: addDays(packet.end, 7),
         evidence_ids: [
           "price:last",
@@ -196,14 +160,72 @@ export function buildRuleReport(packet) {
         ],
         invalidation:
           "完成日K收盤跌破失效價即取消趨勢計畫；若採盤中硬停損需另設委託，不能混用。",
-        note:
-          ratio >= 1.5
-            ? "僅為候選條件，不是已成交買點；費稅已納入，跳空與滑價可能擴大損失。"
-            : "成本後報酬風險不足或資金額度不足，此情境停用。",
+        note: "僅為技術候選價位，不是已成交買點；不預設本金、持倉、費用或部位，跳空與滑價可能擴大損失。",
       });
     }
   }
-  let status = !required
+  const observations = technicalObservations(calculated);
+  const short = observations.find((r) => r.id === "short_trend");
+  const alignment = observations.find((r) => r.id === "alignment");
+  const planChecks = [
+    {
+      id: "history",
+      label: "至少60根完成日K",
+      passed: bars.length >= 60,
+      detail: `已取得 ${bars.length} 根完成觀測。`,
+    },
+    {
+      id: "continuity",
+      label: "最近60交易日資料齊備",
+      passed: !!packet.continuity_verified,
+      detail: packet.continuity_verified
+        ? "符合平台交易日曆檢查。"
+        : "可能缺漏或停牌；不補零。",
+    },
+    {
+      id: "freshness",
+      label: "行情符合預期日期",
+      passed: reference?.trade_date === packet.expected_last_day,
+      detail: `行情 ${reference?.trade_date || "未取得"}；預期 ${packet.expected_last_day}。`,
+    },
+    {
+      id: "atr",
+      label: "波動幅度可計算",
+      passed: metrics.atr14 > 0,
+      detail: `ATR14 ${metrics.atr14 == null ? "缺值" : metrics.atr14.toFixed(2)}。`,
+    },
+    {
+      id: "price",
+      label: "收盤突破前20日高點",
+      passed: !!(
+        last &&
+        metrics.prior_high20 != null &&
+        last.close > metrics.prior_high20
+      ),
+      detail:
+        reference && metrics.prior_high20 != null
+          ? `收盤 ${Number(reference.close).toFixed(2)} 元；前20日高點 ${metrics.prior_high20.toFixed(2)} 元。`
+          : "價格資料不足。",
+    },
+    {
+      id: "volume",
+      label: "量比至少1.5倍",
+      passed: metrics.volume_ratio != null && metrics.volume_ratio >= 1.5,
+      detail: `目前量比 ${metrics.volume_ratio == null ? "缺值" : metrics.volume_ratio.toFixed(2)} 倍。`,
+    },
+    {
+      id: "trend",
+      label: "中期趨勢未轉空",
+      passed: trend !== "oppose" && trend !== "missing",
+      detail:
+        trend === "oppose"
+          ? "收盤 < MA20 < MA60。"
+          : trend === "missing"
+            ? "MA20／MA60缺值。"
+            : "沒有符合收盤 < MA20 < MA60。",
+    },
+  ];
+  const status = !required
     ? "insufficient"
     : breakout && trend === "support"
       ? "confirmed"
@@ -212,32 +234,23 @@ export function buildRuleReport(packet) {
         : "watch";
   const labels = {
     insufficient: "資料不足，先補齊",
-    wait: "先等待",
-    watch: "觀察條件，尚未確認",
+    wait: "波段趨勢偏弱",
+    watch: `${short?.label || "短線待判讀"} · ${alignment?.label || "中期待判讀"}`,
     confirmed: "技術突破已確認，仍需核對風險",
   };
-  const holding =
-    packet.context.shares > 0 && packet.context.cost > 0 && reference
-      ? {
-          cost: packet.context.cost,
-          shares: packet.context.shares,
-          unrealized_gross:
-            (reference.close - packet.context.cost) * packet.context.shares,
-          exit_condition: metrics.ma20
-            ? `完成日K收盤跌破MA20（${metrics.ma20.toFixed(2)}）需檢查續抱假設；不等於固定停損委託。`
-            : "技術資料不足，不能判斷續抱；請先設定可承受損失。",
-          note: "未實現損益未扣費稅；未輸入初始停損，不推定你的停損價。",
-        }
-      : null;
+  const holding = null;
   return {
     version: RULE_VERSION,
     meta: {
       market: packet.market,
       symbol: packet.symbol,
       name: packet.name,
+      industry: packet.industry,
+      asset: packet.asset,
       as_of: packet.as_of,
       mode: packet.mode,
       start: packet.start,
+      range_mode: packet.range_mode || "manual",
       end: packet.end,
       price_basis: "raw",
       resolution: "1d",
@@ -248,28 +261,41 @@ export function buildRuleReport(packet) {
     status,
     status_label: labels[status],
     summary: [
-      labels[status],
-      trend === "support"
-        ? "收盤站在MA20之上，MA20高於MA60；波段趨勢偏強。"
-        : trend === "oppose"
-          ? "收盤低於MA20，MA20低於MA60；波段趨勢偏弱。"
-          : "均線方向尚未一致，或資料不足。",
-      "技術狀態不代表整體買入建議；財務、籌碼、大盤與缺資料需一起核對。",
+      ...(short ? [short.note] : ["尚無完成日K可分析。"]),
+      ...(alignment ? [alignment.note] : []),
+      required
+        ? breakout
+          ? "前20日高點與1.5倍量能條件均達成；下方另核對趨勢與行情條件。"
+          : `突破策略尚欠：${planChecks
+              .filter((c) => ["price", "volume"].includes(c.id) && !c.passed)
+              .map((c) => c.label)
+              .join("、")}。這是此策略的檢核，不表示其他面向無法分析。`
+        : `價位計畫暫停：${planChecks
+            .filter(
+              (c) =>
+                ["history", "continuity", "freshness", "atr"].includes(c.id) &&
+                !c.passed,
+            )
+            .map((c) => c.label)
+            .join("、")}；仍可閱讀已取得指標。`,
     ],
     metrics,
+    observations,
+    plan_checks: planChecks,
     context: { ...packet.context },
     facets: [
       {
         id: "technical",
         label: "技術趨勢",
         state: trend,
-        note: "日線MA20與MA60的相對位置。",
+        note: alignment?.note || "MA20／MA60資料不足。",
       },
       {
         id: "momentum",
         label: "技術動能",
         state: momentum,
-        note: "MACD柱狀值；與均線相關，不重複當成獨立支持票。",
+        note:
+          observations.find((r) => r.id === "macd")?.note || "MACD暖機不足。",
       },
       ...packet.facets,
     ],
@@ -290,9 +316,15 @@ export function buildRuleReport(packet) {
         low: b.low,
         close: b.close,
         volume: b.volume,
+        ma5: b.ma5,
         ma20: b.ma20,
         ma60: b.ma60,
+        technical_label: technicalObservations([b])
+          .filter((r) => ["short_trend", "alignment"].includes(r.id))
+          .map((r) => r.label)
+          .join(" · "),
       })),
+    chart_annotations: chartAnnotations(calculated, packet.start, packet.end),
     ai: null,
     limitations: [
       "沒有保證獲利或已校準勝率；資料覆蓋率不是獲利機率。",

@@ -1,0 +1,507 @@
+[
+  {
+    "id": "statements",
+    "label": "財務報表",
+    "pages": [
+      {
+        "id": "monthly-revenue",
+        "label": "每月營收",
+        "keys": ["revenue", "revenue_yoy", "revenue_mom"],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "eps",
+        "label": "每股盈餘",
+        "keys": ["eps"],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": ["EPS"],
+        "note": "呈現來源單季基本 EPS；不直接相加為年度 EPS。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "nav",
+        "label": "每股淨值",
+        "keys": [],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": [
+          "EquityAttributableToOwnersOfParent",
+          "OrdinaryShare",
+          "CapitalStock"
+        ],
+        "note": "",
+        "requires": "需要各期流通普通股數、庫藏股、特別股權益與面額。股本金額不能當成股數，庫藏股數不能當流通股數。",
+        "kind": "metrics"
+      },
+      {
+        "id": "income-statement",
+        "label": "損益表",
+        "keys": [
+          "sales_amount",
+          "gross_amount",
+          "selling_amount",
+          "admin_amount",
+          "research_amount",
+          "expense_amount",
+          "pretax_amount",
+          "net_amount",
+          "parent_net_amount"
+        ],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": null,
+        "note": "",
+        "requires": null,
+        "kind": "statement"
+      },
+      {
+        "id": "assets",
+        "label": "總資產",
+        "keys": [
+          "cash_balance",
+          "short_investments",
+          "receivable_amount",
+          "inventory_amount",
+          "current_assets",
+          "long_investments",
+          "fixed_assets",
+          "total_assets"
+        ],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": [
+          "TotalAssets",
+          "CurrentAssets",
+          "NoncurrentAssets",
+          "CashAndCashEquivalents",
+          "Inventories",
+          "PropertyPlantAndEquipment",
+          "IntangibleAssets"
+        ],
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "liabilities-and-equity",
+        "label": "負債和股東權益",
+        "keys": [
+          "short_borrowings",
+          "short_notes_payable",
+          "payable_amount",
+          "advance_receipts",
+          "current_long_debt",
+          "current_liabilities",
+          "long_liabilities",
+          "liabilities",
+          "equity"
+        ],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": null,
+        "note": "長期負債採長期借款科目，與非流動負債合計分開；來源缺應付票據等細項時不補零。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "cash-flow-statement",
+        "label": "現金流量表",
+        "keys": [
+          "depreciation_quarter",
+          "amortization_quarter",
+          "operating_cash_quarter",
+          "investing_cash_quarter",
+          "financing_cash_quarter",
+          "capex_quarter",
+          "free_cash_quarter",
+          "cash_change_quarter"
+        ],
+        "report": "TaiwanStockCashFlowsStatement",
+        "fields": null,
+        "note": "圖與數值表使用核對後單季值；原始科目仍保留來源累計金額，兩者清楚分開。設備支出不冒充所有資本支出。",
+        "requires": null,
+        "kind": "statement"
+      },
+      {
+        "id": "dividend-policy",
+        "label": "股利政策",
+        "keys": ["cash_dividend", "stock_dividend"],
+        "report": null,
+        "fields": null,
+        "note": "每筆配息事件分開，核對公告、除權息日與發放日；不把單一事件當全年股利。",
+        "requires": null,
+        "kind": "dividends"
+      },
+      {
+        "id": "e-report",
+        "label": "電子書",
+        "keys": [],
+        "report": null,
+        "fields": null,
+        "note": "電子書是原始報告入口，不是財務指標。由公開資訊觀測站查詢年度財報、年報與公司公告；目前未匯入可驗證的 PDF 清單。",
+        "requires": null,
+        "kind": "documents"
+      }
+    ]
+  },
+  {
+    "id": "profitability",
+    "label": "獲利能力",
+    "pages": [
+      {
+        "id": "profit-margin",
+        "label": "利潤比率",
+        "keys": [
+          "gross_margin",
+          "operating_margin",
+          "pretax_margin",
+          "net_margin"
+        ],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": [
+          "Revenue",
+          "GrossProfit",
+          "OperatingIncome",
+          "PreTaxIncome",
+          "IncomeAfterTaxes"
+        ],
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "operating-expense-ratio",
+        "label": "營業費用率拆解",
+        "keys": [
+          "expense_ratio",
+          "selling_ratio",
+          "admin_ratio",
+          "research_ratio",
+          "expense_amount",
+          "selling_amount",
+          "admin_amount",
+          "research_amount"
+        ],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": [
+          "Revenue",
+          "OperatingExpenses",
+          "SellingExpenses",
+          "AdministrativeExpenses",
+          "ResearchAndDevelopmentExpenses"
+        ],
+        "note": "比率與金額分圖，同表核對；費用比率下降不一定是改善，研發投入減少可能影響長期競爭力。來源未拆科目時不反推分攤。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "non-operating-income-to-profit-before-tax",
+        "label": "業外佔稅前淨利比例",
+        "keys": ["nonoperating_ratio"],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": ["TotalNonoperatingIncomeAndExpense", "PreTaxIncome"],
+        "note": "業外比重偏高需核對是否一次性收益；稅前淨利為零或負值時不算百分比。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "roe-roa",
+        "label": "ROE / ROA",
+        "keys": ["roe_quarter", "roa_interest_adjusted", "roe_ttm"],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": ["TotalAssets", "Equity"],
+        "note": "單季與近四季ROE分開；ROA加回稅後利息。有效稅率與單季利息無法核對時留空，不以未加回利息的ROA替代。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "du-pont-analysis",
+        "label": "杜邦分析",
+        "keys": [
+          "dupont_net_margin",
+          "asset_turnover",
+          "equity_multiplier",
+          "roe_quarter"
+        ],
+        "report": null,
+        "fields": null,
+        "note": "單季淨利率 × 單季總資產週轉率 × 平均資產／平均權益 = 單季總權益報酬率。槓桿上升不等於經營改善。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "turnover-ratio",
+        "label": "經營週轉能力",
+        "keys": ["receivable_total_turnover", "inventory_turnover"],
+        "report": null,
+        "fields": null,
+        "note": "單季營收／成本除以相鄰季末平均存量，未年化。應收包含帳款、票據及關係人，缺必要科目不補零。總資產週轉移至杜邦分析。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "turnover-days",
+        "label": "營運週轉天數",
+        "keys": ["receivable_total_days", "inventory_days_reference"],
+        "report": null,
+        "fields": null,
+        "note": "依參考平台季報口徑：90日 ÷ 同季週轉率；無資料或週轉率非正值不計。實際日數口徑保留在API，畫面不混用。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "current-contract-liabilities-difference-ratio",
+        "label": "合約負債佔營收比例",
+        "keys": ["contract_ratio"],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": ["CurrentContractLiabilities"],
+        "note": "期末流動合約負債 ÷ 同季營收；是存量對流量，可能受收款與履約時點影響。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "dividend-payout-ratio",
+        "label": "現金股利發放率",
+        "keys": [],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": "需要核對每一盈餘年度完整現金股利及相同股數基準的年度 EPS；來源單季 EPS 不能直接相加，也不能用最近一筆配息事件當全年分子。",
+        "kind": "dividends"
+      }
+    ]
+  },
+  {
+    "id": "safety",
+    "label": "安全性分析",
+    "pages": [
+      {
+        "id": "financial-structure-ratio",
+        "label": "財務結構比率",
+        "keys": ["debt_ratio", "equity_ratio", "long_capital_ratio"],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": [
+          "Liabilities",
+          "TotalAssets",
+          "Equity",
+          "NoncurrentLiabilities",
+          "PropertyPlantAndEquipment"
+        ],
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "current-ratio-and-quick-ratio",
+        "label": "流速動比率",
+        "keys": ["current_ratio", "quick_ratio"],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": [
+          "CurrentAssets",
+          "CurrentLiabilities",
+          "Inventories",
+          "Prepayments"
+        ],
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "interest-coverage-ratio",
+        "label": "利息保障倍數",
+        "keys": ["interest_coverage"],
+        "report": "TaiwanStockCashFlowsStatement",
+        "fields": ["NetIncomeBeforeTax", "InterestExpense"],
+        "note": "同一現金流報表期間（稅前淨利＋利息費用）÷ 利息費用；來源無明確利息費用或費用非正數則不計。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "cash-flow-analysis",
+        "label": "現金流量分析",
+        "keys": ["cash_current_debt_ratio", "cash_debt_ratio"],
+        "report": null,
+        "fields": null,
+        "note": "此頁比較營業現金償債比率；三大現金流金額請切到財務報表的現金流量表。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "operating-cash-flow-to-net-income-ratio",
+        "label": "營業現金流對淨利比",
+        "keys": ["cash_profit_quarter_ratio", "cash_profit_ratio"],
+        "report": null,
+        "fields": null,
+        "note": "單季與完整年度分開；單季值先核對來源年度累計並差分，絕不以半年累計除單季淨利。",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "reinvestment-rate",
+        "label": "盈餘再投資比率",
+        "keys": ["reinvestment_ratio"],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": [
+          "InvestmentAccountedForUsingEquityMethod",
+          "PropertyPlantAndEquipment"
+        ],
+        "note": "（當季權益法長期投資＋固定資產−四年前同季兩項）÷ 近16季稅後淨利；合計淨利非正時不計比率，資產科目範圍須核對。",
+        "requires": null,
+        "kind": "metrics"
+      }
+    ]
+  },
+  {
+    "id": "growth",
+    "label": "成長性分析",
+    "pages": [
+      {
+        "id": "monthly-revenue-growth-rate",
+        "label": "月營收成長率",
+        "keys": ["revenue_yoy", "revenue_mom", "revenue"],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "revenue-growth-rate",
+        "label": "營收成長率",
+        "keys": ["sales_yoy", "sales_ttm_yoy"],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": ["Revenue"],
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "gross-profit-growth-rate",
+        "label": "毛利成長率",
+        "keys": ["gross_yoy", "gross_ttm_yoy"],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": ["GrossProfit"],
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "operating-income-growth-rate",
+        "label": "營業利益成長率",
+        "keys": ["operating_yoy", "operating_ttm_yoy"],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": ["OperatingIncome"],
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "net-income-growth-rate",
+        "label": "稅後淨利成長率",
+        "keys": ["net_yoy", "net_ttm_yoy"],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": ["IncomeAfterTaxes"],
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "eps-growth-rate",
+        "label": "每股盈餘成長率",
+        "keys": ["eps"],
+        "report": "TaiwanStockFinancialStatements",
+        "fields": ["EPS"],
+        "note": "",
+        "requires": "需要同一股數基準的追溯調整 EPS 及配股／分割紀錄。先顯示來源 EPS，不用未調整 EPS 直接計算年增率。",
+        "kind": "metrics"
+      },
+      {
+        "id": "current-contract-liabilities-growth-rate",
+        "label": "合約負債成長率",
+        "keys": ["contract_yoy", "contract_qoq"],
+        "report": "TaiwanStockBalanceSheet",
+        "fields": ["CurrentContractLiabilities"],
+        "note": "同季年增、前季季增分開；基期為零或負值不計百分比。",
+        "requires": null,
+        "kind": "metrics"
+      }
+    ]
+  },
+  {
+    "id": "valuation",
+    "label": "價值評估",
+    "pages": [
+      {
+        "id": "pe",
+        "label": "本益比評價",
+        "keys": ["per"],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "pe-band",
+        "label": "本益比河流圖",
+        "keys": ["per"],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": "需要同股數基準的連續 TTM EPS、股價及除權／分割事件。來源本益比可查歷史，尚不轉成河流價格帶。",
+        "kind": "metrics"
+      },
+      {
+        "id": "pb",
+        "label": "股價淨值比評價",
+        "keys": ["pbr"],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "pb-band",
+        "label": "股價淨值比河流圖",
+        "keys": ["pbr"],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": "需要各期可驗證每股淨值、原始股價及公司行動；不拿當期淨值套用所有過往價格。",
+        "kind": "metrics"
+      },
+      {
+        "id": "dividend-yield",
+        "label": "現金股利殖利率",
+        "keys": ["dividend_yield"],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": null,
+        "kind": "metrics"
+      },
+      {
+        "id": "average-dividend-yield",
+        "label": "平均現金股息殖利率",
+        "keys": [],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": "需要完整年度現金股利、指定平均年數、股數調整與對應原始股價。日殖利率平均不等於平均股息殖利率。",
+        "kind": "dividends"
+      },
+      {
+        "id": "average-dividend-yield-band",
+        "label": "平均現金股息河流圖",
+        "keys": [],
+        "report": null,
+        "fields": null,
+        "note": "",
+        "requires": "需要逐時點可得的完整年度現金股利、平均窗口、股數調整及原始價格。固定殖利率價格帶不當成保證合理價。",
+        "kind": "dividends"
+      }
+    ]
+  }
+]

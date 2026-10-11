@@ -1,0 +1,9 @@
+.env
+node_modules/
+web/dist/
+coverage/
+*.db
+data/
+.tmp/
+*.backup
+*.dump

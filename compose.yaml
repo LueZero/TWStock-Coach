@@ -1,0 +1,60 @@
+name: stock-intelligent-assistant
+x-app: &app
+  build: .
+  image: stock-intelligent-assistant:local
+  environment: &env
+    DATABASE_URL: postgresql://stock:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/stock
+    INGEST_API_KEY: ${INGEST_API_KEY:?Set INGEST_API_KEY in .env}
+    FINMIND_TOKEN: ${FINMIND_TOKEN:-}
+    ETF_WATCHLIST: ${ETF_WATCHLIST:-}
+    WATCHLIST: ${WATCHLIST:-TWSE:2330,TWSE:0050,TPEX:6488}
+    BACKFILL_START: ${BACKFILL_START:-2021-01-01}
+    ENABLE_ADJUSTED: ${ENABLE_ADJUSTED:-false}
+    FINMIND_REQUEST_INTERVAL: ${FINMIND_REQUEST_INTERVAL:-8}
+    GOOGLE_NEWS_ENABLED: ${GOOGLE_NEWS_ENABLED:-false}
+    TZ: Asia/Taipei
+    RUN_WORKER: "false"
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+  stop_grace_period: 60s
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_DB: stock
+      POSTGRES_USER: stock
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      TZ: Asia/Taipei
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U stock -d stock"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  api:
+    <<: *app
+    ports:
+      - 127.0.0.1:8000:8000
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:8000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  scheduler:
+    <<: *app
+    command: [node, api/cli.js, schedule]
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  postgres-data:

@@ -1,0 +1,55 @@
+{
+  "name": "stock-intelligent-assistant",
+  "version": "1.2.0",
+  "description": "Taiwan stock monitoring and research platform with an independent Vite frontend and Node.js API",
+  "license": "MIT",
+  "keywords": [
+    "taiwan-stock",
+    "twse",
+    "tpex",
+    "technical-analysis",
+    "financial-analysis",
+    "vite",
+    "fastify",
+    "postgresql"
+  ],
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "web"
+  ],
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "start": "node api/index.js",
+    "dev": "npm run dev --workspace @twstock-coach/web",
+    "build": "npm run build --workspace @twstock-coach/web",
+    "preview": "npm run preview --workspace @twstock-coach/web",
+    "init": "node api/cli.js init",
+    "schedule": "node api/cli.js schedule",
+    "sync": "node api/cli.js sync",
+    "test": "node --test tests/*.test.js web/tests/*.test.js",
+    "verify": "node scripts/verify_stack.js",
+    "verify:browser": "node scripts/verify_browser.cjs",
+    "setup": "node scripts/setup_env.js",
+    "format": "prettier --write api web/src web/index.html web/vite.config.js web/package.json scripts/*.js tests/*.js web/tests/*.test.js package.json compose.yaml",
+    "format:check": "prettier --check api web/src web/index.html web/vite.config.js web/package.json scripts/*.js tests/*.js web/tests/*.test.js package.json compose.yaml",
+    "verify:db": "node --test tests/integration.database.js",
+    "verify:worker": "node scripts/verify_worker.js",
+    "verify:market": "node scripts/verify_market_board.cjs",
+    "verify:market-layout": "node scripts/verify_market_layout.cjs"
+  },
+  "dependencies": {
+    "@fastify/swagger": "9.9.2",
+    "@fastify/swagger-ui": "6.1.2",
+    "decimal.js": "10.6.0",
+    "fast-xml-parser": "5.11.2",
+    "fastify": "5.12.5",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10",
+    "vite": "8.3.4"
+  }
+}

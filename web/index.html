@@ -1,0 +1,1473 @@
+<!doctype html>
+<html lang="zh-Hant" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#080e18" />
+    <meta
+      name="description"
+      content="股票智能助手：台股行情、技術指標、財務分析、籌碼觀察、同業比較與交易成本試算平台。"
+    />
+    <title>股票智能助手｜台股分析終端</title>
+  </head>
+  <body>
+    <!-- 全域導覽與股票搜尋 -->
+    <header class="topbar navbar">
+      <a class="brand" href="/" aria-label="股票智能助手首頁">
+        <span class="brand-mark"
+          ><svg viewBox="0 0 32 32" aria-hidden="true">
+            <path
+              d="M4 22l7-9 6 5 11-12M4 29h24M4 4v25"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            />
+            <circle cx="28" cy="6" r="2" fill="currentColor" /></svg
+        ></span>
+        <span>股票智能助手<small>TAIWAN MARKET TERMINAL</small></span>
+      </a>
+      <form id="searchForm" class="search-wrap input-group" autocomplete="off">
+        <label class="visually-hidden" for="stockInput">股票代號或名稱</label>
+        <span class="search-icon">⌕</span>
+        <input
+          id="stockInput"
+          class="form-control"
+          placeholder="搜尋股票 · 2330 / 台積電"
+          aria-controls="suggestions"
+          aria-expanded="false"
+        />
+        <button class="primary btn" type="submit">查詢</button>
+        <div id="suggestions" class="suggestions" hidden></div>
+      </form>
+      <div class="header-right">
+        <span class="connection-chip"
+          ><i></i><span id="connectionState">確認市場</span></span
+        ><span id="clock" class="terminal-clock"></span>
+      </div>
+    </header>
+    <nav class="workspace-menu mobile-page-menu" aria-label="主要頁面">
+      <button data-app-page="stock" aria-pressed="true">
+        <span>◈</span> 個股看盤<small>STOCK RESEARCH</small>
+      </button>
+      <button data-app-page="market" aria-pressed="false">
+        <span>◉</span> 大盤市場<small>MARKET OVERVIEW</small>
+      </button>
+      <button data-app-page="calculator" aria-pressed="false">
+        <span>▦</span> 股票計算機
+      </button>
+    </nav>
+    <div class="workspace">
+      <!-- 自選觀察清單 -->
+      <aside class="sidebar">
+        <div class="sidebar-caption">WORKSPACE</div>
+        <nav class="workspace-menu sidebar-page-menu" aria-label="主要頁面">
+          <button data-app-page="stock" aria-pressed="true">
+            <span>◈</span> 個股看盤
+          </button>
+          <button data-app-page="market" aria-pressed="false">
+            <span>◉</span> 大盤市場
+          </button>
+          <button data-app-page="calculator" aria-pressed="false">
+            <span>▦</span> 股票計算機
+          </button>
+        </nav>
+        <div class="section-title">
+          自選觀察 <span id="favoriteCount" class="badge"></span>
+        </div>
+        <div id="favorites" class="favorites"></div>
+        <div class="sidebar-note">輸入代號或名稱<br />即可探索其他股票</div>
+        <div class="sidebar-bottom">
+          <span class="status-dot"></span>台灣市場
+          <div id="marketStatus"></div>
+          <a href="/docs" target="_blank" rel="noopener">資料介面 ↗</a>
+        </div>
+      </aside>
+      <main>
+        <div id="searchStatus" class="message alert" role="status" hidden></div>
+        <!-- 股票識別與行情摘要 -->
+        <section class="stock-header">
+          <div class="stock-identity">
+            <h1>
+              <span id="stockName">台積電</span><span id="stockCode">2330</span
+              ><button
+                id="favoriteToggle"
+                class="star"
+                title="加入或移除自選股"
+                aria-label="加入或移除自選股"
+              >
+                ☆
+              </button>
+            </h1>
+            <div class="stock-meta">
+              <span id="marketName" class="market-label"
+                >上市 · 臺灣證券交易所</span
+              ><span id="industry" class="muted"></span>
+            </div>
+          </div>
+          <div class="stock-price">
+            <div id="lastPrice">—</div>
+            <span id="priceChange">等待行情</span><small id="priceTime"></small>
+          </div>
+          <div class="refresh-controls">
+            <label class="monitor-toggle"
+              ><input id="autoRefresh" type="checkbox" />盤中監控</label
+            ><select id="refreshInterval" aria-label="行情更新間隔">
+              <option value="10">10 秒</option>
+              <option value="30">30 秒</option>
+              <option value="60">60 秒</option></select
+            ><button
+              id="refreshButton"
+              class="quiet"
+              title="更新行情與歷史資料"
+            >
+              ↻ 更新
+            </button>
+          </div>
+        </section>
+        <div class="quote-strip">
+          <div><span>開盤價</span><strong id="openPrice">—</strong></div>
+          <div><span>最高價</span><strong id="highPrice">—</strong></div>
+          <div><span>最低價</span><strong id="lowPrice">—</strong></div>
+          <div><span>前收價</span><strong id="previousClose">—</strong></div>
+          <div>
+            <span id="volumeTitle">成交量（張）</span
+            ><strong id="totalVolume">—</strong>
+          </div>
+          <div><span>交易日期</span><strong id="tradeDate">—</strong></div>
+        </div>
+        <!-- 分析功能導覽 -->
+        <nav
+          id="sectionNav"
+          class="section-nav nav"
+          aria-label="分析工作台切換"
+        >
+          <button data-section="overview" aria-pressed="true">
+            ◈ 看盤工作台</button
+          ><button data-section="technical" aria-pressed="false">
+            技術指標</button
+          ><button data-section="basic" aria-pressed="false">基本分析</button
+          ><button data-section="financial" aria-pressed="false">
+            財務分析</button
+          ><button data-section="chips" aria-pressed="false">籌碼分析</button
+          ><button data-section="backtest" aria-pressed="false">策略回放</button
+          ><button data-section="peers" aria-pressed="false">同業比較</button
+          ><button data-section="news" aria-pressed="false">熱門新聞</button
+          ><span id="sectionContext" class="muted"></span>
+        </nav>
+        <!-- 時間區間、週期與數量單位 -->
+        <section
+          class="query-panel"
+          id="queryControls"
+          aria-label="股票分析區間與週期"
+        >
+          <div class="query-toolbar">
+            <label class="period-control"
+              >週期<select id="resolution" aria-label="K 線週期">
+                <option value="1d">日 K</option>
+                <option value="1w">週 K</option>
+                <option value="1mo">月 K</option>
+                <option value="1m">1 分 K</option>
+                <option value="5m">5 分 K</option>
+                <option value="15m">15 分 K</option>
+                <option value="30m">30 分 K</option>
+                <option value="60m">1 小時 K</option>
+                <option value="120m">2 小時 K</option>
+              </select></label
+            >
+            <div
+              class="range-buttons btn-group"
+              role="group"
+              aria-label="快捷交易日"
+            >
+              <button data-days="0">單日</button
+              ><button data-days="6">7 日</button
+              ><button data-days="19">20 日</button
+              ><button data-days="59">60 日</button
+              ><button data-days="119">120 日</button
+              ><button data-days="239">240 日</button>
+            </div>
+            <select id="priceBasis" aria-label="價格基準">
+              <option value="raw">原始價</option>
+              <option value="adjusted">還原價</option>
+            </select>
+            <div id="dateControls" class="date-controls">
+              <label
+                ><span class="visually-hidden">起始日期</span
+                ><input
+                  id="startDate"
+                  type="date"
+                  aria-label="起始日期" /></label
+              ><span class="date-separator">—</span
+              ><label
+                ><span class="visually-hidden">截止日期</span
+                ><input id="endDate" type="date" aria-label="截止日期" /></label
+              ><button id="applyDates" class="quiet">套用</button>
+            </div>
+          </div>
+          <div class="query-meta">
+            <p id="rangeSelection" class="range-selection" role="status"></p>
+            <label class="unit-control"
+              ><span>數量</span
+              ><select id="volumeUnit" aria-label="成交量與五檔數量單位">
+                <option value="lots">張</option>
+                <option value="shares">股</option>
+              </select></label
+            >
+            <button
+              class="quiet source-button"
+              data-bs-toggle="collapse"
+              data-bs-target="#dataStatus"
+              aria-expanded="false"
+              aria-controls="dataStatus"
+            >
+              資料狀態 ⌄
+            </button>
+          </div>
+          <div id="dataStatus" class="collapse data-status">
+            <p id="rangeStatus" class="range-status" role="status"></p>
+            <p id="periodHelp" class="subtle"></p>
+            <div id="monitorStatus" class="source-status" role="status"></div>
+            <div id="quoteStatus" class="source-status" role="status">
+              正在連接公開行情…
+            </div>
+          </div>
+        </section>
+        <!-- 工作台：各分析面板由控制器切換 -->
+        <div class="dashboard-grid" id="dashboardGrid" data-view="overview">
+          <div class="main-column">
+            <section
+              class="panel chart-panel"
+              id="chartPanel"
+              data-view-panel="overview"
+            >
+              <div class="chart-heading">
+                <div class="chart-heading-main"><h2>趨勢圖</h2></div>
+                <div
+                  id="quickMetricsPanel"
+                  class="chart-indicators"
+                  aria-label="關鍵技術指標"
+                >
+                  <div id="quickMetrics" class="quick-metrics"></div>
+                </div>
+              </div>
+              <div class="collapse chart-settings" id="chartSettings">
+                <div class="legend" id="maLegend"></div>
+                <div class="chart-tools">
+                  <button id="clearMAs" class="quiet">隱藏均線</button>
+                  <label
+                    ><input id="showBollinger" type="checkbox" />布林通道（20
+                    期／2 倍標準差）</label
+                  >
+                  <label
+                    ><input
+                      id="showSignals"
+                      type="checkbox"
+                      checked
+                    />技術訊號</label
+                  >
+                  <label
+                    >副圖
+                    <select id="subIndicator">
+                      <option value="macd">MACD</option>
+                      <option value="rsi14">RSI</option>
+                      <option value="kd">KD</option>
+                      <option value="none">隱藏</option>
+                    </select></label
+                  >
+                </div>
+              </div>
+              <div class="chart-tools navigation-tools">
+                <button
+                  class="quiet chart-settings-toggle"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#chartSettings"
+                  aria-expanded="false"
+                  aria-controls="chartSettings"
+                >
+                  圖表設定
+                </button>
+                <button id="panLeft" class="quiet" aria-label="向較早日期移動">
+                  ← 較早
+                </button>
+                <button id="panRight" class="quiet" aria-label="向較晚日期移動">
+                  較晚 →
+                </button>
+                <button id="zoomIn" class="quiet">＋ 放大</button
+                ><button id="zoomOut" class="quiet">－ 縮小</button>
+                <button id="resetChart" class="quiet">顯示全部</button>
+                <span class="muted"
+                  >拖曳移動 · 滾輪縮放 · 點 K 線查看該期指標</span
+                >
+              </div>
+              <div class="chart-wrap">
+                <svg
+                  id="chart"
+                  viewBox="0 0 1100 560"
+                  preserveAspectRatio="none"
+                  role="img"
+                  aria-label="股票走勢、K 線、均線與成交量"
+                ></svg>
+                <div id="chartTooltip" class="chart-tooltip" hidden></div>
+              </div>
+              <div class="chart-foot">
+                <span id="chartDescription">載入歷史 K 線…</span
+                ><span id="historyStatus" role="status"></span>
+              </div>
+              <p id="selectedBar" class="subtle" role="status">
+                點選 K 線可查看該期價格、技術指標與訊號。
+              </p>
+              <p class="subtle">
+                ▲ MA5 上穿 MA20／量價突破／技術進場候選　▼ MA5 下穿
+                MA20；標記只使用完成 K 線，代表規則觀察。
+              </p>
+            </section>
+            <section
+              id="marketBoardPanel"
+              class="panel market-board-panel"
+              data-view-panel="indices"
+              hidden
+            >
+              <div class="panel-heading">
+                <div>
+                  <span class="panel-kicker">TAIWAN MARKET</span>
+                  <h2>大盤市場</h2>
+                </div>
+                <button id="refreshMarketBoard" class="quiet">更新行情</button>
+              </div>
+              <div
+                id="marketBoardCards"
+                class="market-board-cards"
+                aria-label="加權指數與台指期盤別"
+              ></div>
+              <nav class="market-tabs" aria-label="大盤分析功能">
+                <button data-market-tab="live" aria-pressed="true">
+                  即時走勢
+                </button>
+                <button data-market-tab="technical" aria-pressed="false">
+                  技術分析
+                </button>
+                <button data-market-tab="chips" aria-pressed="false">
+                  籌碼分析
+                </button>
+              </nav>
+              <div id="boardPriceWorkspace">
+                <div class="board-toolbar">
+                  <div class="market-board-tools">
+                    <label
+                      >資料<select id="boardMode">
+                        <option value="intraday">最近一盤走勢</option>
+                        <option value="history">歷史日線</option>
+                      </select></label
+                    >
+                    <label id="boardContractLabel"
+                      >契約月份<select id="boardContract"></select
+                    ></label>
+                    <label id="boardExpiryLabel" hidden
+                      >歷史契約<input id="boardExpiry" type="month"
+                    /></label>
+                    <label id="boardResolutionLabel"
+                      >週期<select id="boardResolution">
+                        <option value="1">1 分 K</option>
+                        <option value="5" selected>5 分 K</option>
+                        <option value="15">15 分 K</option>
+                        <option value="30">30 分 K</option>
+                        <option value="60">1 小時 K</option>
+                      </select></label
+                    >
+                    <label
+                      >圖表<select id="boardChartType">
+                        <option value="candle">K 線</option>
+                        <option value="line">走勢線</option>
+                      </select></label
+                    >
+                    <label class="board-monitor"
+                      ><input
+                        id="boardMonitor"
+                        type="checkbox"
+                      />自動更新</label
+                    >
+                    <button id="boardResetChart" class="quiet">重設圖表</button>
+                  </div>
+                  <form id="boardRangeForm" class="market-board-tools" hidden>
+                    <label
+                      >起始日期<input
+                        id="boardStart"
+                        type="date"
+                        required /></label
+                    ><label
+                      >截止日期<input
+                        id="boardEnd"
+                        type="date"
+                        required /></label
+                    ><button type="submit">套用區間</button>
+                  </form>
+                </div>
+                <div class="market-board-layout">
+                  <div
+                    id="boardTechnicalMetrics"
+                    class="board-technical-metrics"
+                    hidden
+                  ></div>
+                  <div class="board-trend">
+                    <div
+                      id="boardQuoteMetrics"
+                      class="market-board-statistics"
+                    ></div>
+                    <div class="board-trend-title">
+                      <h3 id="boardChartTitle">加權指數走勢</h3>
+                      <details
+                        id="boardTechnicalHelp"
+                        class="board-technical-help"
+                        hidden
+                      >
+                        <summary>指標說明</summary>
+                        <p id="boardTechnicalNote" class="subtle"></p>
+                      </details>
+                      <div>
+                        <label
+                          ><input
+                            id="boardMA5"
+                            type="checkbox"
+                            checked
+                          />MA5</label
+                        ><label
+                          ><input
+                            id="boardMA20"
+                            type="checkbox"
+                            checked
+                          />MA20</label
+                        >
+                      </div>
+                    </div>
+                    <p id="boardChartSelection" class="subtle">
+                      移動游標或點選圖表查看行情。
+                    </p>
+                    <svg
+                      id="boardChart"
+                      viewBox="0 0 1000 440"
+                      role="img"
+                      aria-label="市場行情趨勢"
+                    ></svg>
+                    <p id="boardChartCaption" class="subtle"></p>
+                  </div>
+                  <aside
+                    id="boardOrderbook"
+                    class="board-orderbook orderbook"
+                    hidden
+                  >
+                    <div class="panel-heading">
+                      <h2>五檔委買委賣</h2>
+                      <span id="boardBookBadge" class="badge">等待行情</span>
+                    </div>
+                    <p id="boardBookTime" class="subtle">
+                      台指期 · 數量單位：口
+                    </p>
+                    <table
+                      class="book-table"
+                      aria-label="台指期五檔委買委賣，數量單位為口"
+                    >
+                      <thead>
+                        <tr>
+                          <th>委買量</th>
+                          <th>委買價</th>
+                          <th>檔</th>
+                          <th>委賣價</th>
+                          <th>委賣量</th>
+                        </tr>
+                      </thead>
+                      <tbody id="boardBookRows"></tbody>
+                    </table>
+                    <div id="boardBookBalance" class="book-balance"></div>
+                    <details class="advice-details">
+                      <summary>五檔資料說明</summary>
+                      <p id="boardBookNote" class="subtle">
+                        1 口＝1
+                        份期貨契約。五檔是尚未成交的委託，可能撤銷；公開快照非逐筆串流。
+                      </p>
+                    </details>
+                  </aside>
+                </div>
+                <p id="marketBoardStatus" class="source-status" role="status">
+                  切換此頁後取得市場行情。
+                </p>
+                <details class="research-sources">
+                  <summary>來源與資料時間</summary>
+                  <p id="boardSourceDetails" class="subtle"></p>
+                </details>
+              </div>
+              <div id="marketChipsWorkspace" hidden>
+                <div class="market-chips-toolbar">
+                  <form id="marketChipsForm" class="market-board-tools">
+                    <label
+                      >統計日期<input id="marketChipsDate" type="date" required
+                    /></label>
+                    <button type="submit" class="quiet">查詢收盤籌碼</button>
+                    <span class="muted">收盤後公布 · 非即時資料</span>
+                  </form>
+                  <nav class="chip-subtabs" aria-label="大盤籌碼分類">
+                    <button
+                      data-market-chips="institutional"
+                      aria-pressed="true"
+                    >
+                      法人買賣
+                    </button>
+                    <button data-market-chips="margin" aria-pressed="false">
+                      融資融券
+                    </button>
+                    <button data-market-chips="futures" aria-pressed="false">
+                      台指期法人
+                    </button>
+                  </nav>
+                </div>
+                <div
+                  id="marketChipsMetrics"
+                  class="board-technical-metrics"
+                ></div>
+                <div class="market-chip-layout">
+                  <div
+                    id="marketChipsChart"
+                    class="market-chips-chart"
+                    aria-label="籌碼數值比較"
+                  ></div>
+                  <div class="table-scroll">
+                    <table class="history-table">
+                      <thead id="marketChipsHead"></thead>
+                      <tbody id="marketChipsRows"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <p
+                  id="marketChipsStatus"
+                  class="source-status"
+                  role="status"
+                ></p>
+                <details class="research-sources market-chip-details">
+                  <summary>資料口徑與來源</summary>
+                  <p id="marketChipsNotes" class="subtle"></p>
+                </details>
+              </div>
+            </section>
+            <section
+              class="panel"
+              id="technicalPanel"
+              data-view-panel="technical"
+              hidden
+            >
+              <div class="panel-heading">
+                <h2>技術指標</h2>
+                <span id="indicatorDate" class="muted"></span>
+              </div>
+              <div id="metrics" class="metrics"></div>
+              <p class="indicator-colors">
+                邊框判讀：<span class="tone-bull">紅色＝偏強</span> ·
+                <span class="tone-bear">綠色＝偏弱</span> ·
+                <span class="tone-watch">黃色＝需留意</span> ·
+                藍灰色＝中性／資料不足。每張卡另有文字判讀，顏色不代表買賣指令。
+              </p>
+              <p id="indicatorNote" class="subtle"></p>
+              <details id="historyPanel" class="technical-history">
+                <summary>
+                  歷史行情
+                  <span class="muted">最近 20 筆 · 點選查看該期指標</span>
+                </summary>
+                <div class="table-scroll">
+                  <table class="history-table">
+                    <thead>
+                      <tr>
+                        <th>交易日期</th>
+                        <th>開盤</th>
+                        <th>最高</th>
+                        <th>最低</th>
+                        <th>收盤</th>
+                        <th id="historyVolumeHead">成交量（張）</th>
+                        <th>MA5（5 期）</th>
+                        <th>MA20（20 期）</th>
+                      </tr>
+                    </thead>
+                    <tbody id="historyRows"></tbody>
+                  </table>
+                </div>
+              </details>
+            </section>
+            <section
+              class="panel"
+              id="financialPanel"
+              data-view-panel="financial"
+              hidden
+            >
+              <div class="panel-heading">
+                <h2>財務分析</h2>
+                <button id="refreshFinancials" class="quiet">
+                  更新財務資料
+                </button>
+              </div>
+              <div class="financial-legend">
+                <span class="fund-good">● 紅：改善／強勢</span
+                ><span class="fund-bad">● 綠：衰退／虧損</span
+                ><span class="fund-watch">● 黃：需留意</span
+                ><span class="fund-neutral">● 藍灰：需背景／資料不足</span>
+              </div>
+              <div class="chart-tools">
+                <label
+                  >資料視角<select id="financialMode">
+                    <option value="latest">最新取得資料</option>
+                    <option value="historical">所選 K 線當時可得</option>
+                  </select></label
+                >
+              </div>
+              <p id="financialStatus" class="subtle" role="status">
+                尚未載入財務資料
+              </p>
+              <nav
+                id="financialCategories"
+                class="peer-metric-buttons"
+                aria-label="財務分析分類"
+              >
+                <button
+                  class="quiet"
+                  data-financial-category="statements"
+                  aria-pressed="false"
+                >
+                  財務報表</button
+                ><button
+                  class="quiet"
+                  data-financial-category="profitability"
+                  aria-pressed="true"
+                >
+                  獲利能力</button
+                ><button
+                  class="quiet"
+                  data-financial-category="safety"
+                  aria-pressed="false"
+                >
+                  安全性分析</button
+                ><button
+                  class="quiet"
+                  data-financial-category="growth"
+                  aria-pressed="false"
+                >
+                  成長性分析</button
+                ><button
+                  class="quiet"
+                  data-financial-category="valuation"
+                  aria-pressed="false"
+                >
+                  價值評估
+                </button>
+              </nav>
+              <div class="financial-workspace">
+                <aside class="financial-navigation">
+                  <div class="financial-nav-heading">分析細項</div>
+                  <label class="financial-mobile-select"
+                    >選擇細項<select
+                      id="financialSubpageSelect"
+                      aria-label="財務分析細項"
+                    ></select
+                  ></label>
+                  <nav
+                    id="financialSubpages"
+                    aria-label="財務分析細項選單"
+                  ></nav>
+                </aside>
+                <div class="financial-detail">
+                  <p id="financialCategoryNote" class="utility-note"></p>
+                  <div id="financialSummary" class="research-summary"></div>
+                  <div id="financialMetrics" class="metrics"></div>
+                </div>
+              </div>
+              <details class="research-sources">
+                <summary>資料來源、接收時間與修訂</summary>
+                <div id="financialCoverage" class="subtle"></div>
+              </details>
+              <details>
+                <summary>歷年月營收與財報原始科目</summary>
+                <div class="table-scroll">
+                  <table class="history-table">
+                    <thead>
+                      <tr>
+                        <th>營收年月</th>
+                        <th>月營收（新臺幣元）</th>
+                      </tr>
+                    </thead>
+                    <tbody id="revenueRows"></tbody>
+                  </table>
+                </div>
+                <p id="financialPeriods" class="subtle"></p>
+                <a id="financialRaw" target="_blank" rel="noopener"
+                  >查看財報原始科目與修訂 ↗</a
+                >
+              </details>
+              <p class="subtle">
+                最新財報不會套用到過去的交易建議。無可靠公告時間時，以平台首次取得時間判定可用性。銀行、保險、ETF
+                等商品不能套用一般製造業的財務標準。
+              </p>
+            </section>
+            <section
+              class="panel research-panel"
+              id="basicPanel"
+              data-view-panel="basic"
+              hidden
+            >
+              <div class="panel-heading">
+                <div>
+                  <span class="panel-kicker">COMPANY PROFILE</span>
+                  <h2>基本分析</h2>
+                </div>
+                <button id="refreshBasic" class="quiet">更新基本資料</button>
+              </div>
+              <p class="research-intro">
+                先掌握公司背景與機構研究；股利、財務數據及籌碼各在專屬頁面查看。
+              </p>
+              <div class="chart-tools">
+                <label
+                  >資料視角<select id="basicViewMode">
+                    <option value="latest">最新取得修訂</option>
+                    <option value="historical">所選K線當時可得</option>
+                  </select></label
+                >
+              </div>
+              <p id="basicStatus" class="subtle" role="status">
+                切換到此區塊後載入資料。
+              </p>
+              <section class="research-section">
+                <h3>公司基本資料</h3>
+                <div id="companyProfile" class="profile-grid"></div>
+              </section>
+
+              <section class="research-section">
+                <h3>法人目標價 <small>研究報告意見，不是本平台預測</small></h3>
+                <div id="targetMetrics" class="research-cards"></div>
+                <p id="targetNote" class="subtle"></p>
+                <div class="table-scroll">
+                  <table class="history-table">
+                    <thead>
+                      <tr>
+                        <th>機構</th>
+                        <th>報告日</th>
+                        <th>目標價（TWD）</th>
+                        <th>來源</th>
+                      </tr>
+                    </thead>
+                    <tbody id="targetRows"></tbody>
+                  </table>
+                </div>
+              </section>
+            </section>
+            <section
+              class="panel research-panel"
+              id="chipPanel"
+              data-view-panel="chips"
+              hidden
+            >
+              <div class="panel-heading">
+                <div>
+                  <span class="panel-kicker">OWNERSHIP &amp; FLOW</span>
+                  <h2>籌碼分析</h2>
+                </div>
+                <button id="refreshChips" class="quiet">更新籌碼資料</button>
+              </div>
+              <p class="research-intro">
+                先分清楚「今天誰買賣」與「現在誰持有」。綠色表示淨流入、紅色表示淨流出；大戶與分點不等於同一主力。
+              </p>
+              <div class="chart-tools">
+                <label
+                  >資料視角<select id="chipViewMode">
+                    <option value="latest">最新取得修訂</option>
+                    <option value="historical">所選K線當時可得</option>
+                  </select></label
+                >
+              </div>
+              <p id="chipStatus" class="subtle" role="status">
+                切換後載入所選股票、日期區間的盤後籌碼。
+              </p>
+              <p id="chipUnitNote" class="subtle"></p>
+              <div id="chipSummary" class="research-summary"></div>
+              <section class="research-section">
+                <h3>
+                  法人資金動向
+                  <small id="institutionUnitHint"
+                    >卡片為區間合計；彈窗為每日值 · 股</small
+                  >
+                </h3>
+                <div id="institutionMetrics" class="research-cards"></div>
+                <details>
+                  <summary>區間每日法人明細</summary>
+                  <div class="table-scroll">
+                    <table class="history-table">
+                      <thead>
+                        <tr>
+                          <th>日期</th>
+                          <th>外資淨買賣超（股）</th>
+                          <th>投信淨買賣超（股）</th>
+                          <th>自營商淨買賣超（股）</th>
+                        </tr>
+                      </thead>
+                      <tbody id="institutionRows"></tbody>
+                    </table>
+                  </div>
+                </details>
+              </section>
+              <section class="research-section">
+                <h3>
+                  主力代理與券商分點 <small>觀察集中度，不猜測交易者身分</small>
+                </h3>
+                <div id="brokerMetrics" class="research-cards"></div>
+                <details>
+                  <summary>最新分點日：買超／賣超排行與全部明細</summary>
+                  <div class="branch-controls">
+                    <label
+                      >排序<select id="branchSort">
+                        <option value="buy">買超最多</option>
+                        <option value="sell">賣超最多</option>
+                      </select></label
+                    ><label
+                      >分點搜尋<input
+                        id="branchSearch"
+                        placeholder="輸入券商或分點名稱"
+                    /></label>
+                  </div>
+                  <div class="table-scroll">
+                    <table class="history-table">
+                      <thead>
+                        <tr>
+                          <th>分點</th>
+                          <th>買進（股）</th>
+                          <th>賣出（股）</th>
+                          <th>淨買賣超（股）</th>
+                          <th>日期</th>
+                        </tr>
+                      </thead>
+                      <tbody id="branchRows"></tbody>
+                    </table>
+                  </div>
+                </details>
+              </section>
+              <section class="research-section">
+                <h3>籌碼分布 <small>週頻股權與外資持股存量</small></h3>
+                <div id="distributionMetrics" class="research-cards"></div>
+                <details>
+                  <summary>最新持股分級明細</summary>
+                  <div class="table-scroll">
+                    <table class="history-table">
+                      <thead>
+                        <tr>
+                          <th>日期</th>
+                          <th>持股級距（股）</th>
+                          <th>人數</th>
+                          <th>占比（%）</th>
+                          <th>持股（股）</th>
+                        </tr>
+                      </thead>
+                      <tbody id="distributionRows"></tbody>
+                    </table>
+                  </div>
+                </details>
+              </section>
+              <section class="research-section">
+                <h3>
+                  ETF／基金持股 <small>只列已接入的揭露，不代表全市場</small>
+                </h3>
+                <div id="fundMetrics" class="research-cards"></div>
+                <p id="fundNote" class="subtle"></p>
+                <div class="table-scroll">
+                  <table class="history-table">
+                    <thead>
+                      <tr>
+                        <th>基金／ETF</th>
+                        <th>揭露日</th>
+                        <th>持股（股）</th>
+                        <th>占該基金權重（%）</th>
+                        <th>趨勢</th>
+                      </tr>
+                    </thead>
+                    <tbody id="fundRows"></tbody>
+                  </table>
+                </div>
+              </section>
+              <details class="research-sources">
+                <summary>各項資料的來源、缺漏與權限</summary>
+                <div id="chipCoverage"></div>
+              </details>
+            </section>
+            <section
+              class="panel"
+              id="backtestPanel"
+              data-view-panel="backtest"
+              hidden
+            >
+              <div class="panel-heading">
+                <h2>所選區間策略回放</h2>
+                <button id="runBacktest" class="quiet">執行回放</button>
+              </div>
+              <p class="subtle">
+                完成 K 線產生訊號，下一根開盤模擬進場；停損 2×ATR、停利 2R，跌破
+                MA20 後下一根開盤退出。只回放技術條件，不包含財報篩選。
+              </p>
+              <div class="risk-inputs">
+                <label
+                  >單邊手續費（基點）<input
+                    id="feeBps"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value="10"
+                /></label>
+                <label
+                  >單邊滑價（基點）<input
+                    id="slippageBps"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value="5"
+                /></label>
+                <label
+                  >賣出稅（基點）<input
+                    id="sellTaxBps"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value="0"
+                /></label>
+              </div>
+              <p class="subtle">
+                1 基點＝0.01%。以上為研究假設，賣出稅預設
+                0；請依商品與交易方式修改，零稅率會低估成本。
+              </p>
+              <p id="backtestStatus" class="subtle" role="status">
+                選定日期與 K 線週期後執行，圖表縮放不改變回放區間。
+              </p>
+              <div id="backtestMetrics" class="metrics"></div>
+              <details>
+                <summary>交易紀錄</summary>
+                <div class="table-scroll">
+                  <table class="history-table">
+                    <thead>
+                      <tr>
+                        <th>進場時間</th>
+                        <th>出場時間</th>
+                        <th>進場價</th>
+                        <th>出場價</th>
+                        <th>扣成本報酬</th>
+                        <th>出場原因</th>
+                      </tr>
+                    </thead>
+                    <tbody id="backtestTrades"></tbody>
+                  </table>
+                </div>
+              </details>
+              <p id="backtestNotes" class="subtle"></p>
+            </section>
+
+            <section
+              class="panel utility-panel"
+              id="calculatorPanel"
+              data-view-panel="calculator"
+              hidden
+            >
+              <div class="panel-heading">
+                <h2>股票計算機</h2>
+                <span id="calculatorStock" class="badge"></span>
+              </div>
+              <p class="utility-intro">
+                把價差和成本分開看。一般買賣支援零股；當沖試算以同日、同股票、同數量全部沖銷為前提。
+              </p>
+              <form id="calculatorForm" class="calculator-layout">
+                <div class="calculator-inputs">
+                  <div class="utility-fields">
+                    <label
+                      >試算方式<select id="calcMode">
+                        <option value="roundtrip">一般買入 → 賣出</option>
+                        <option value="buy">只算買入成本</option>
+                        <option value="sell">只算賣出實收</option>
+                        <option value="day_long">當沖：先買後賣</option>
+                        <option value="day_short">當沖：先賣後買</option>
+                      </select></label
+                    ><label
+                      >商品稅別<select id="calcAsset">
+                        <option value="stock">一般股票</option>
+                        <option value="etf">ETF（非債券）</option>
+                        <option value="bond_etf">債券ETF</option>
+                      </select></label
+                    ><label
+                      >交易日期<input
+                        id="calcDate"
+                        type="date"
+                        required /></label
+                    ><label
+                      >數量單位<select id="calcUnit">
+                        <option value="lots">張（1張＝1,000股）</option>
+                        <option value="shares">股（含零股）</option>
+                      </select></label
+                    ><label
+                      >交易數量<input
+                        id="calcQuantity"
+                        type="number"
+                        min="1"
+                        max="100000000"
+                        step="1"
+                        value="1"
+                        required
+                    /></label>
+                  </div>
+                  <div class="utility-fields calculator-prices">
+                    <label id="calcBuyLabel"
+                      >買進價格（元／股）<span class="calculator-price-stepper"
+                        ><button
+                          id="calcBuyDown"
+                          type="button"
+                          class="quiet"
+                          aria-label="買進價下跳一檔"
+                        >
+                          −</button
+                        ><input
+                          id="calcBuyPrice"
+                          type="number"
+                          min="0.01"
+                          max="1000000"
+                          step="any"
+                        /><button
+                          id="calcBuyUp"
+                          type="button"
+                          class="quiet"
+                          aria-label="買進價上跳一檔"
+                        >
+                          ＋
+                        </button></span
+                      ></label
+                    ><label id="calcSellLabel"
+                      >賣出價格（元／股）<span class="calculator-price-stepper"
+                        ><button
+                          id="calcSellDown"
+                          type="button"
+                          class="quiet"
+                          aria-label="賣出價下跳一檔"
+                        >
+                          −</button
+                        ><input
+                          id="calcSellPrice"
+                          type="number"
+                          min="0.01"
+                          max="1000000"
+                          step="any"
+                        /><button
+                          id="calcSellUp"
+                          type="button"
+                          class="quiet"
+                          aria-label="賣出價上跳一檔"
+                        >
+                          ＋
+                        </button></span
+                      ></label
+                    >
+                  </div>
+                  <label
+                    id="calcCloseTicksLabel"
+                    class="calculator-close-ticks"
+                    hidden
+                    >自動換算出場價：漲跌幾檔<input
+                      id="calcCloseTicks"
+                      type="number"
+                      min="-200"
+                      max="200"
+                      step="1"
+                      placeholder="例如 +3 上漲三檔、-3 下跌三檔"
+                    /><small
+                      >留空可直接填買進／賣出價；輸入檔數會自動更新出場價。</small
+                    ></label
+                  >
+                  <div id="calcRatioControls" class="utility-fields">
+                    <label
+                      >漲跌情境<select id="calcScenarioMode">
+                        <option value="ticks">自動跳檔（依股價與商品）</option>
+                        <option value="percent">自訂漲跌百分比</option>
+                      </select></label
+                    ><label id="calcTickStepLabel"
+                      >情境表每格檔數<select id="calcTickStep">
+                        <option value="1">1 檔</option>
+                        <option value="5">5 檔</option>
+                        <option value="10">10 檔</option>
+                      </select></label
+                    ><label id="calcUpStepLabel" hidden
+                      >上漲每格（%）<input
+                        id="calcUpStep"
+                        type="number"
+                        min="0.001"
+                        max="10"
+                        step="0.001"
+                        value="1"
+                        required /></label
+                    ><label id="calcDownStepLabel" hidden
+                      >下跌每格（%）<input
+                        id="calcDownStep"
+                        type="number"
+                        min="0.001"
+                        max="10"
+                        step="0.001"
+                        value="1"
+                        required /></label
+                    ><label
+                      >情境表上下各幾格<input
+                        id="calcSteps"
+                        type="number"
+                        min="1"
+                        max="10"
+                        step="1"
+                        value="5"
+                        required
+                    /></label>
+                  </div>
+                  <p id="calcTickNote" class="utility-note" role="status"></p>
+                  <p id="calcRatioNote" class="utility-note"></p>
+                  <button type="button" id="calcUsePrice" class="quiet">
+                    帶入最近原始價格
+                  </button>
+                  <p id="calcPriceNote" class="subtle"></p>
+                  <div class="calculator-costs">
+                    <div class="utility-fields">
+                      <label
+                        >手續費折數（10折＝無折扣）<input
+                          id="calcDiscount"
+                          type="number"
+                          min="0"
+                          max="10"
+                          step="0.001"
+                          value="10"
+                          required /></label
+                      ><label
+                        >每筆最低手續費（元）<input
+                          id="calcMinimum"
+                          type="number"
+                          min="0"
+                          max="100000"
+                          step="1"
+                          value="20"
+                          required
+                      /></label>
+                    </div>
+                    <p class="subtle">
+                      例如 2.8 代表 2.8 折。手續費以 0.1425%
+                      乘折扣計算，不足最低費用時採最低費用；買賣各計一筆。交易稅自動計入。
+                    </p>
+                  </div>
+                  <p id="calcTaxNote" class="utility-note"></p>
+                  <button class="primary" type="submit">
+                    計算交易成本與損益
+                  </button>
+                </div>
+                <div class="calculator-output">
+                  <p id="calcStatus" role="status" class="utility-note">
+                    輸入交易價格開始試算。
+                  </p>
+                  <div id="calcResults" class="utility-results"></div>
+                  <div class="table-scroll">
+                    <table class="history-table utility-table">
+                      <thead>
+                        <tr>
+                          <th>順序</th>
+                          <th>成交金額</th>
+                          <th>手續費</th>
+                          <th>交易稅</th>
+                          <th>現金收付</th>
+                        </tr>
+                      </thead>
+                      <tbody id="calcLegs"></tbody>
+                    </table>
+                  </div>
+                  <p id="calcBreakEven" class="utility-note"></p>
+                  <details id="calcScenarios" open>
+                    <summary>上下漲跌損益：點選直接套用</summary>
+                    <p class="utility-note">
+                      自動跳檔會逐檔重新判斷升降單位，跨級距時上下價差可能不同。價差損益尚未扣成本，淨損益已扣雙邊手續費與交易稅；先賣後買時下跌才有價差收益。
+                    </p>
+                    <div class="table-scroll">
+                      <table class="history-table utility-table">
+                        <thead>
+                          <tr>
+                            <th>漲跌情境</th>
+                            <th>出場價格</th>
+                            <th>價格漲跌</th>
+                            <th>價差損益</th>
+                            <th>扣成本淨損益</th>
+                          </tr>
+                        </thead>
+                        <tbody id="calcScenarioRows"></tbody>
+                      </table>
+                    </div>
+                  </details>
+                  <p id="calcNotes" class="utility-note"></p>
+                </div>
+              </form>
+              <p class="utility-note">
+                規則來源：<a
+                  href="https://www.twse.com.tw/zh/about/company/guide.html"
+                  target="_blank"
+                  rel="noopener"
+                  >證交所交易成本</a
+                >、<a
+                  href="https://www.twse.com.tw/zh/products/system/day-trading.html"
+                  target="_blank"
+                  rel="noopener"
+                  >當沖規則</a
+                >、<a
+                  href="https://wwwc.twse.com.tw/zh/products/securities/etf/overview/rules.html"
+                  target="_blank"
+                  rel="noopener"
+                  >ETF稅率</a
+                >。試算不判定帳戶或股票能否當沖，不包含融資融券。
+              </p>
+            </section>
+            <section
+              class="panel utility-panel"
+              id="peersPanel"
+              data-view-panel="peers"
+              hidden
+            >
+              <div class="panel-heading">
+                <h2>同業比較</h2>
+                <span id="peerIndustry" class="badge"></span>
+              </div>
+              <p class="utility-intro">
+                先看估值，再看成長與獲利。系統提供同產業候選公司，可自行增減；同產業不一定做相同生意。
+              </p>
+              <div class="peer-toolbar utility-fields">
+                <label>比較資料截至<input id="peerDate" type="date" /></label
+                ><label
+                  >資料可得視角<select id="peerViewMode">
+                    <option value="latest">目前取得修訂（事後研究）</option>
+                    <option value="historical">當時平台已接收資料</option>
+                  </select></label
+                ><label
+                  >比較期間<select id="peerAlignment">
+                    <option value="common">對齊共同期間</option>
+                    <option value="latest">各自最新（日期可能不同）</option>
+                  </select></label
+                ><button id="refreshPeers" class="quiet">更新比較</button
+                ><button id="loadPeers" class="primary">
+                  補齊名單財務資料
+                </button>
+              </div>
+              <div class="peer-select">
+                <label
+                  >篩選已帶出的公司<input
+                    id="peerFilter"
+                    placeholder="代號／名稱"
+                    autocomplete="off" /></label
+                ><label
+                  >顯示範圍<select id="peerScope">
+                    <option value="all">全部同產業候選</option>
+                    <option value="business">已核對業務相近公司</option>
+                  </select></label
+                ><label
+                  >新增其他比較公司<input
+                    id="peerSearch"
+                    placeholder="輸入代號或名稱"
+                    autocomplete="off"
+                /></label>
+                <div id="peerSuggestions" class="peer-suggestions"></div>
+              </div>
+              <details>
+                <summary>調整完整比較名單</summary>
+                <div id="peerSelection" class="peer-selection"></div>
+              </details>
+              <p id="peerStatus" role="status" class="utility-note">
+                切換後取得所選股票的同產業比較。
+              </p>
+              <p id="peerLoadStatus" role="status" class="utility-note"></p>
+              <p id="peerBasis" class="utility-note"></p>
+              <div id="peerMetricButtons" class="peer-metric-buttons"></div>
+              <div id="peerSummary" class="utility-results"></div>
+              <div
+                id="peerChart"
+                class="peer-chart"
+                aria-label="同業指標比較"
+              ></div>
+              <div class="peer-table-heading">
+                <h3>數值與資料期間</h3>
+                <select id="peerTableGroup" aria-label="比較指標群組">
+                  <option value="valuation">估值</option>
+                  <option value="operation">成長與獲利</option>
+                  <option value="structure">財務結構</option>
+                </select>
+              </div>
+              <div class="table-scroll">
+                <table class="history-table utility-table">
+                  <thead id="peerHead"></thead>
+                  <tbody id="peerRows"></tbody>
+                </table>
+              </div>
+              <div class="peer-pagination">
+                <button id="peerPrevious" class="quiet">上一頁</button
+                ><span id="peerPageInfo" class="utility-note"></span
+                ><button id="peerNext" class="quiet">下一頁</button>
+              </div>
+              <p id="peerNotes" class="utility-note"></p>
+              <details>
+                <summary>來源、修訂與缺漏</summary>
+                <div id="peerSources" class="peer-sources"></div>
+              </details>
+            </section>
+            <section
+              id="newsPanel"
+              class="panel media-panel"
+              data-view-panel="news"
+              hidden
+            >
+              <div class="panel-heading">
+                <div>
+                  <span class="panel-kicker">COMPANY MEDIA</span>
+                  <h2 id="mediaCompanyTitle">公司新聞與公開討論</h2>
+                </div>
+                <form id="mediaForm" class="media-controls">
+                  <label
+                    >公司索引日期<input
+                      id="mediaDate"
+                      type="date"
+                      required /></label
+                  ><button type="submit" class="quiet">更新</button>
+                </form>
+              </div>
+              <div id="mediaSearchLinks" class="media-search-links"></div>
+              <div class="media-columns">
+                <section class="media-column">
+                  <div class="media-column-heading">
+                    <h3>熱門新聞</h3>
+                    <span>最新時間排序</span>
+                  </div>
+                  <div id="companyNews" class="media-list"></div>
+                </section>
+                <section class="media-column forum-column">
+                  <div class="media-column-heading">
+                    <h3>輿論資訊</h3>
+                    <span>公開討論 · 未驗證觀點</span>
+                  </div>
+                  <div id="companyDiscussions" class="media-list"></div>
+                </section>
+              </div>
+              <p id="mediaStatus" class="source-status" role="status"></p>
+              <details class="research-sources">
+                <summary>來源覆蓋與資料時間</summary>
+                <div id="mediaSources"></div>
+                <p id="mediaNotes" class="subtle"></p>
+              </details>
+            </section>
+          </div>
+          <div class="side-column">
+            <section
+              class="panel orderbook"
+              id="bookPanel"
+              data-view-panel="overview"
+            >
+              <div class="panel-heading">
+                <h2>五檔委買委賣</h2>
+                <span id="bookBadge" class="badge">等待行情</span>
+              </div>
+              <p id="bookTime" class="subtle">一般整股 · 最新公開快照</p>
+              <table class="book-table">
+                <thead>
+                  <tr>
+                    <th>委買量</th>
+                    <th>委買價</th>
+                    <th>檔</th>
+                    <th>委賣價</th>
+                    <th>委賣量</th>
+                  </tr>
+                </thead>
+                <tbody id="bookRows"></tbody>
+              </table>
+              <div id="bookBalance" class="book-balance"></div>
+              <details class="advice-details">
+                <summary>五檔資料說明</summary>
+                <p id="bookNote" class="subtle">
+                  顯示尚未成交的最佳五檔委託，委託可能撤銷，不代表成交或價格方向。
+                </p>
+              </details>
+            </section>
+          </div>
+        </div>
+        <footer>
+          股票智能助手 · 行情新鮮度與來源狀態可展開查看 · 技術規則供研究，未完成
+          K 線不產生正式訊號
+        </footer>
+      </main>
+    </div>
+    <!-- 指標歷史趨勢視窗 -->
+    <div
+      class="modal fade analysis-report insight-modal"
+      id="insightModal"
+      tabindex="-1"
+      aria-labelledby="insightTitle"
+    >
+      <div
+        class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down"
+      >
+        <article class="modal-content">
+          <header class="modal-header">
+            <div>
+              <span class="report-kicker">HISTORY &amp; EVIDENCE</span>
+              <h2 id="insightTitle" class="modal-title">指標趨勢與明細</h2>
+              <p id="insightContext" class="subtle"></p>
+            </div>
+            <button
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="關閉趨勢視窗"
+            ></button>
+          </header>
+          <div class="modal-body">
+            <p id="insightAssessment" class="insight-assessment"></p>
+            <form id="insightForm" class="insight-toolbar">
+              <label
+                >起始日期<input type="date" id="insightStart" required /></label
+              ><label
+                >截止日期<input type="date" id="insightEnd" required /></label
+              ><label
+                >圖形<select id="insightChartType">
+                  <option value="line">折線</option>
+                  <option value="bar">柱狀</option>
+                </select></label
+              ><button type="submit" class="primary">套用區間</button>
+              <div class="insight-presets">
+                <button type="button" data-insight-years="1">近1年</button
+                ><button type="button" data-insight-years="3">近3年</button
+                ><button type="button" data-insight-years="5">近5年</button
+                ><button type="button" data-insight-years="0">全部</button>
+              </div>
+            </form>
+            <div class="insight-plot">
+              <svg
+                id="insightChart"
+                role="img"
+                aria-label="所選指標歷史趨勢"
+              ></svg>
+            </div>
+            <p id="insightStatus" class="subtle" role="status"></p>
+            <p id="insightNote" class="subtle"></p>
+            <details open>
+              <summary>區間資料與來源明細</summary>
+              <div class="table-scroll">
+                <table class="history-table">
+                  <thead>
+                    <tr>
+                      <th>期間</th>
+                      <th id="insightValueHeading">值</th>
+                    </tr>
+                  </thead>
+                  <tbody id="insightRows"></tbody>
+                </table>
+              </div>
+            </details>
+          </div>
+          <footer class="modal-footer">
+            <span>只呈現已取得資料；缺資料不補值</span
+            ><button class="quiet" data-bs-dismiss="modal">返回分析</button>
+          </footer>
+        </article>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

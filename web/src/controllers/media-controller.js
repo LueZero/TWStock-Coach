@@ -55,7 +55,23 @@ function list(id, items, empty, limit = 6) {
 async function load(force = false) {
   if ($("dashboardGrid").dataset.view !== "news") return;
   const key = stockKey(),
-    sig = key + ":" + $("mediaDate").value;
+    start = $("mediaStart").value,
+    end = $("mediaEnd").value,
+    sig = `${key}:${start}:${end}`;
+  if (
+    !start ||
+    !end ||
+    start > end ||
+    end > today() ||
+    (Date.parse(end) - Date.parse(start)) / 86400000 >= 31
+  ) {
+    version++;
+    abort?.abort();
+    signature = "";
+    $("mediaStatus").textContent =
+      "請選擇有效起訖日期，起始日不晚於截止日，最多 31 個日曆日且不可超過今日。";
+    return;
+  }
   if (!force && signature === sig) return;
   signature = sig;
   const current = ++version;
@@ -70,29 +86,53 @@ async function load(force = false) {
   $("mediaSearchLinks").replaceChildren();
   $("mediaNotes").textContent = "";
   try {
-    const params = new URLSearchParams();
-    if ($("mediaDate").value) params.set("date", $("mediaDate").value);
-    const response = await fetch(
-      `/api/media/${state.stock.market}/${state.stock.symbol}?${params}`,
-      { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(45000)]) },
-    );
-    const data = await response.json();
-    if (!response.ok) throw Error(data.detail || "新聞暫時無法取得");
-    if (current !== version || key !== stockKey()) return;
-    if (!$("mediaDate").value) {
-      $("mediaDate").value = data.date;
-      signature = key + ":" + data.date;
-    }
-    list(
-      "companyNews",
-      data.news,
-      "本次來源未提供符合此公司的新聞，可切換索引日期或使用上方新聞搜尋。",
-    );
-    list(
-      "companyDiscussions",
-      data.discussions,
-      "最近公開文章未找到符合此公司的討論；這不代表沒有討論，可使用上方公開討論搜尋。",
-    );
+    const news = [],
+      discussions = [],
+      failures = new Set(),
+      sources = new Map();
+    let cursor = start,
+      data,
+      processed = 0;
+    const total = (Date.parse(end) - Date.parse(start)) / 86400000 + 1;
+    do {
+      const params = new URLSearchParams({ start, end, cursor });
+      const response = await fetch(
+        `/api/media/${state.stock.market}/${state.stock.symbol}?${params}`,
+        { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(45000)]) },
+      );
+      data = await response.json();
+      if (!response.ok) throw Error(data.detail || "新聞暫時無法取得");
+      if (current !== version || key !== stockKey()) return;
+      news.push(...data.news);
+      discussions.push(...data.discussions);
+      for (const date of data.failed_dates || []) failures.add(date);
+      for (const source of data.sources) {
+        const old = sources.get(source.id);
+        sources.set(source.id, {
+          ...source,
+          count: source.count + (old?.count || 0),
+          available: source.available && (old?.available ?? true),
+          stale: source.stale || old?.stale,
+        });
+      }
+      data.news = merged(news);
+      data.discussions = merged(discussions);
+      processed++;
+      list(
+        "companyNews",
+        data.news,
+        "所選區間尚未取得符合此公司的新聞，可調整區間或使用上方新聞搜尋。",
+      );
+      list(
+        "companyDiscussions",
+        data.discussions,
+        "所選區間未取得符合此公司的公開討論；來源僅提供近期文章，可使用上方搜尋。",
+      );
+      $("mediaStatus").textContent =
+        `正在載入 ${start}～${end} · ${processed}／${total} 日 · 新聞 ${data.news.length} 筆／公開討論 ${data.discussions.length} 筆`;
+      cursor = data.next_cursor;
+    } while (cursor);
+    data.sources = [...sources.values()];
     for (const s of data.sources) {
       $("mediaSources").append(
         node(
@@ -112,14 +152,13 @@ async function load(force = false) {
     $("mediaNotes").textContent = (data.notes || []).join(" ");
     $("mediaStatus").textContent =
       data.warning ||
-      `公司索引日期 ${data.date} · 新聞 ${data.news.length} 筆／公開討論 ${data.discussions.length} 筆 · ${data.sources.filter((s) => s.available).length}／${data.sources.length} 來源可用${data.sources.some((s) => s.stale) ? " · 部分來源為先前快取" : ""}`;
+      `公司索引區間 ${start}～${end} · 新聞 ${data.news.length} 筆／公開討論 ${data.discussions.length} 筆${failures.size ? ` · 資料不完整：${[...failures].join("、")} 公司索引未取得，請重新套用` : " · 區間查詢完成"}${data.sources.some((s) => s.stale) ? " · 部分來源為先前快取" : ""}`;
   } catch (error) {
     if (current !== version || key !== stockKey() || abort.signal.aborted)
       return;
     signature = "";
-    $("mediaStatus").textContent = error.message;
-    list("companyNews", [], "未取得新聞資料，請稍後更新。");
-    list("companyDiscussions", [], "未取得討論資料，請稍後更新。");
+    $("mediaStatus").textContent =
+      `區間查詢未完成：${error.message}。目前清單僅為已載入部分，請重新套用。`;
   }
 }
 let stock = "";
@@ -129,19 +168,48 @@ export function mediaChanged() {
     signature = "";
     version++;
     abort?.abort();
-    $("mediaDate").value = "";
   }
   load();
 }
 export function initMediaController() {
-  $("mediaDate").max = new Intl.DateTimeFormat("en-CA", {
+  for (const id of ["mediaStart", "mediaEnd"]) $(id).max = today();
+  setRange(7);
+  document.querySelectorAll("[data-media-days]").forEach((button) => {
+    button.onclick = () => {
+      setRange(Number(button.dataset.mediaDays));
+      load(true);
+    };
+  });
+  $("mediaForm").onsubmit = (e) => {
+    e.preventDefault();
+    load(true);
+  };
+}
+function today() {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-  $("mediaForm").onsubmit = (e) => {
-    e.preventDefault();
-    load(true);
-  };
+}
+function setRange(days) {
+  const end = today();
+  $("mediaEnd").value = end;
+  $("mediaStart").value = new Date(Date.parse(end) - (days - 1) * 86400000)
+    .toISOString()
+    .slice(0, 10);
+}
+function merged(items) {
+  const seen = new Set();
+  return [...items]
+    .sort((a, b) => b.published_at.localeCompare(a.published_at))
+    .filter((item) => {
+      const url = new URL(item.url);
+      for (const key of [...url.searchParams.keys()])
+        if (/^(utm_|fbclid$|gclid$)/i.test(key)) url.searchParams.delete(key);
+      if (seen.has(url.href)) return false;
+      seen.add(url.href);
+      return true;
+    });
 }

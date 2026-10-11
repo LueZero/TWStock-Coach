@@ -25,7 +25,7 @@ import { marketStatus, tradingRange } from "./trading.js";
 import { search, getQuote } from "./market.js";
 import { boardQuotes, boardIntraday, boardHistory } from "./market-board.js";
 import { marketChips } from "./market-chips.js";
-import { stockMedia } from "./media.js";
+import { stockMediaRange } from "./media.js";
 import { view as financialView, saveSnapshot } from "./fundamentals.js";
 import { view as equityView } from "./equity.js";
 import { report as peerReport } from "./peers.js";
@@ -294,9 +294,7 @@ export async function createApp({ logger = false } = {}) {
   });
   get("/api/media/:market/:symbol", (request) => {
     const [market, symbol] = pair(request);
-    const day = request.query.date ? validDate(request.query.date) : null;
-    if (day && day > taipeiDay()) fail("不支援未來日期");
-    return stockMedia(market, symbol, day);
+    return stockMediaRange(market, symbol, request.query);
   });
   get("/api/market/board/chart", async (request) => {
     const q = request.query;

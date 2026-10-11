@@ -109,7 +109,7 @@ export function contract(path, method) {
     schema.params = object(pair, ["market", "symbol"]);
   const queries = {
     "/api/market/chips": object({ date }),
-    "/api/media/:market/:symbol": object({ date }),
+    "/api/media/:market/:symbol": object({ date, ...range, cursor: date }),
     "/api/market/board/chart": object({
       product: enumOf("index", "day", "night"),
       mode: enumOf("intraday", "history"),

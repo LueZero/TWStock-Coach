@@ -38,7 +38,8 @@
     "verify:db": "node --test tests/integration.database.js",
     "verify:worker": "node scripts/verify_worker.js",
     "verify:market": "node scripts/verify_market_board.cjs",
-    "verify:market-layout": "node scripts/verify_market_layout.cjs"
+    "verify:market-layout": "node scripts/verify_market_layout.cjs",
+    "verify:chips": "node scripts/verify_chip_workspace.cjs"
   },
   "dependencies": {
     "@fastify/swagger": "9.9.2",

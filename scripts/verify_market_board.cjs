@@ -1,4 +1,4 @@
-// Standalone headless Chrome fallback when the in-app Browser is unavailable.
+﻿// Standalone headless Chrome fallback when the in-app Browser is unavailable.
 // No npm packages; Node 22 supplies fetch and WebSocket.
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -203,7 +203,7 @@ async function until(expression) {
     fs.writeFileSync(path.join(root,"web/public/images/screenshots/market-chips.png"),Buffer.from(chipsScreenshot.data,"base64"));
     await evaluate('document.querySelector("[data-app-page=stock]").click();document.getElementById("stockInput").value="2409";document.getElementById("searchForm").dispatchEvent(new Event("submit",{cancelable:true}));');
     await until('state.stock.symbol==="2409"');
-    await evaluate('document.querySelector("[data-section=news]").click();document.getElementById("mediaDate").value="2026-10-08";document.getElementById("mediaForm").dispatchEvent(new Event("submit",{cancelable:true}));');
+    await evaluate('document.querySelector("[data-section=news]").click();document.getElementById("mediaStart").value="2026-10-08";document.getElementById("mediaEnd").value="2026-10-08";document.getElementById("mediaForm").dispatchEvent(new Event("submit",{cancelable:true}));');
     await until('document.querySelectorAll("#companyNews .media-item").length>0 && document.querySelectorAll("#companyDiscussions .media-item").length>0');
     assert.match(await evaluate('document.getElementById("mediaCompanyTitle").textContent'),/友達/);
     assert.equal(await evaluate('document.querySelectorAll("#companyNews .media-item").length<=6 && document.querySelectorAll("#companyDiscussions .media-item").length<=6'),true);

@@ -24,6 +24,7 @@ import {
   snapshots,
 } from "./fundamentals.js";
 import { DATASETS as EQUITY, replaceObservationWindow } from "./equity.js";
+import { officialOwnership } from "./ownership-provider.js";
 import { tradingRange } from "./trading.js";
 export function historyRequest(r) {
   stock(r.market, r.symbol);
@@ -76,7 +77,7 @@ export async function enqueue(
       kind === "history"
         ? `ondemand:${r.market}:${r.symbol}:${r.price_basis}${r.timeframe === "1m" ? ":1m" : ""}`
         : kind === "equity"
-          ? `equity:${r.market}:${r.symbol}:${r.end}:tdcc-v1`
+          ? `equity:${r.market}:${r.symbol}:${r.end}:chips-v2`
           : `fundamentals:${r.market}:${r.symbol}`,
     details =
       kind === "history"
@@ -324,6 +325,14 @@ export async function executeJob(
         if (dataset === "CompanyProfile") {
           items = await companyProfile(r.market, r.symbol);
           source = r.market === "TWSE" ? "twse" : "tpex";
+        } else if (
+          ["DirectorHoldingsReport", "InsiderTransfersReport"].includes(dataset)
+        ) {
+          items = await officialOwnership(r.market, r.symbol, dataset);
+          source = r.market === "TWSE" ? "twse" : "tpex";
+          const dates = items.map((r) => r.date).sort();
+          start = dates[0] ?? end;
+          windowEnd = dates.at(-1) ?? end;
         } else if (
           dataset === "TaiwanStockHoldingSharesPer" &&
           !process.env.FINMIND_TOKEN

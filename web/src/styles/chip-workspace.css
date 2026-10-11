@@ -1,0 +1,220 @@
+.chip-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  margin: 15px 0;
+}
+.chip-tabs button {
+  border: 1px solid #29415e;
+  border-radius: 9px;
+  background: #111e31;
+  color: #b6cae0;
+  padding: 11px 8px;
+  font-size: 15px;
+}
+.chip-tabs button.active {
+  color: #effaff;
+  background: #164b69;
+  border-color: #57c8ef;
+  box-shadow: inset 0 -2px #57c8ef;
+}
+.chip-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.chip-heading h3 {
+  margin: 0;
+  font-size: 23px;
+}
+.chip-controls {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.chip-control {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  color: #b8cce3;
+  font-size: 14px;
+}
+.chip-control select,
+.chip-control input {
+  background: #0d1b2c;
+  color: #e8f5ff;
+  border: 1px solid #34506b;
+  border-radius: 7px;
+  padding: 8px;
+  max-width: 220px;
+}
+#chipUnitNote {
+  margin: 12px 0 24px;
+  line-height: 1.8;
+}
+.chip-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.chip-stat {
+  border: 1px solid #2c4260;
+  background: linear-gradient(125deg, #142238, #0d192b);
+  border-radius: 10px;
+  padding: 13px 16px;
+  display: grid;
+  gap: 6px;
+}
+.chip-stat span,
+.chip-stat small {
+  color: #a7bdd5;
+  font-size: 13px;
+}
+.chip-stat strong {
+  font-size: 25px;
+}
+.chip-chart-frame {
+  background: #0a1525;
+  border: 1px solid #293e5a;
+  border-radius: 12px;
+  padding: 13px;
+  margin: 12px 0;
+}
+.chip-chart-legend {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  margin: 0 0 6px;
+}
+.chip-price-key {
+  color: #eab95c;
+}
+#chipChart {
+  display: block;
+  width: 100%;
+  min-height: 230px;
+  max-height: 370px;
+}
+#chipChart[hidden] {
+  display: none;
+}
+.chip-empty {
+  color: #a7bdd5;
+  text-align: center;
+  padding: 32px 12px;
+  line-height: 1.8;
+}
+.chip-definition {
+  color: #a9bed6;
+  font-size: 14px;
+  line-height: 1.8;
+  margin: 10px 0;
+}
+.chip-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #293e5a;
+  border-radius: 10px;
+}
+.chip-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.chip-table-wrap th,
+.chip-table-wrap td {
+  padding: 11px 12px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid #233650;
+}
+.chip-table-wrap th {
+  color: #a9cee9;
+  background: #142236;
+}
+.chip-table-wrap td:first-child,
+.chip-table-wrap th:first-child {
+  text-align: left;
+}
+.chip-table-wrap tbody tr:hover {
+  background: #12243a;
+}
+.chip-row-action {
+  border: 0;
+  background: none;
+  color: #74d4f6;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+}
+.chip-pagination {
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+  align-items: center;
+  margin: 12px 0;
+  color: #abc2da;
+  font-size: 14px;
+}
+.chip-pagination button {
+  border: 1px solid #34506b;
+  border-radius: 7px;
+  color: #e8f5ff;
+  background: #142236;
+  padding: 7px 12px;
+}
+.chip-pagination button:disabled {
+  opacity: 0.4;
+}
+.chip-sources {
+  border-top: 1px solid #293e5a;
+  padding-top: 12px;
+  margin-top: 15px;
+  color: #a9bed6;
+  font-size: 13px;
+}
+.chip-sources summary {
+  cursor: pointer;
+}
+.chip-sources p {
+  line-height: 1.8;
+}
+@media (max-width: 700px) {
+  .chip-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .chip-tabs button {
+    font-size: 13px;
+    padding: 10px 5px;
+  }
+  .chip-control {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .chip-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .chip-stat {
+    padding: 10px;
+  }
+  .chip-stat strong {
+    font-size: 20px;
+  }
+  #chipChart {
+    min-height: 190px;
+  }
+  .chip-chart-frame {
+    padding: 7px;
+  }
+  .chip-heading h3 {
+    font-size: 20px;
+  }
+  .chip-pagination {
+    justify-content: center;
+    gap: 8px;
+  }
+}

@@ -767,9 +767,6 @@
                 </div>
                 <button id="refreshChips" class="quiet">更新籌碼資料</button>
               </div>
-              <p class="research-intro">
-                先分清楚「今天誰買賣」與「現在誰持有」。綠色表示淨流入、紅色表示淨流出；大戶與分點不等於同一主力。
-              </p>
               <div class="chart-tools">
                 <label
                   >資料視角<select id="chipViewMode">
@@ -779,116 +776,49 @@
                 >
               </div>
               <p id="chipStatus" class="subtle" role="status">
-                切換後載入所選股票、日期區間的盤後籌碼。
+                載入所選股票的盤後籌碼資料。
               </p>
-              <p id="chipUnitNote" class="subtle"></p>
-              <div id="chipSummary" class="research-summary"></div>
-              <section class="research-section">
-                <h3>
-                  法人資金動向
-                  <small id="institutionUnitHint"
-                    >卡片為區間合計；彈窗為每日值 · 股</small
-                  >
-                </h3>
-                <div id="institutionMetrics" class="research-cards"></div>
-                <details>
-                  <summary>區間每日法人明細</summary>
-                  <div class="table-scroll">
-                    <table class="history-table">
-                      <thead>
-                        <tr>
-                          <th>日期</th>
-                          <th>外資淨買賣超（股）</th>
-                          <th>投信淨買賣超（股）</th>
-                          <th>自營商淨買賣超（股）</th>
-                        </tr>
-                      </thead>
-                      <tbody id="institutionRows"></tbody>
-                    </table>
-                  </div>
-                </details>
-              </section>
-              <section class="research-section">
-                <h3>
-                  主力代理與券商分點 <small>觀察集中度，不猜測交易者身分</small>
-                </h3>
-                <div id="brokerMetrics" class="research-cards"></div>
-                <details>
-                  <summary>最新分點日：買超／賣超排行與全部明細</summary>
-                  <div class="branch-controls">
-                    <label
-                      >排序<select id="branchSort">
-                        <option value="buy">買超最多</option>
-                        <option value="sell">賣超最多</option>
-                      </select></label
-                    ><label
-                      >分點搜尋<input
-                        id="branchSearch"
-                        placeholder="輸入券商或分點名稱"
-                    /></label>
-                  </div>
-                  <div class="table-scroll">
-                    <table class="history-table">
-                      <thead>
-                        <tr>
-                          <th>分點</th>
-                          <th>買進（股）</th>
-                          <th>賣出（股）</th>
-                          <th>淨買賣超（股）</th>
-                          <th>日期</th>
-                        </tr>
-                      </thead>
-                      <tbody id="branchRows"></tbody>
-                    </table>
-                  </div>
-                </details>
-              </section>
-              <section class="research-section">
-                <h3>籌碼分布 <small>週頻股權與外資持股存量</small></h3>
-                <div id="distributionMetrics" class="research-cards"></div>
-                <details>
-                  <summary>最新持股分級明細</summary>
-                  <div class="table-scroll">
-                    <table class="history-table">
-                      <thead>
-                        <tr>
-                          <th>日期</th>
-                          <th>持股級距（股）</th>
-                          <th>人數</th>
-                          <th>占比（%）</th>
-                          <th>持股（股）</th>
-                        </tr>
-                      </thead>
-                      <tbody id="distributionRows"></tbody>
-                    </table>
-                  </div>
-                </details>
-              </section>
-              <section class="research-section">
-                <h3>
-                  ETF／基金持股 <small>只列已接入的揭露，不代表全市場</small>
-                </h3>
-                <div id="fundMetrics" class="research-cards"></div>
-                <p id="fundNote" class="subtle"></p>
-                <div class="table-scroll">
-                  <table class="history-table">
-                    <thead>
-                      <tr>
-                        <th>基金／ETF</th>
-                        <th>揭露日</th>
-                        <th>持股（股）</th>
-                        <th>占該基金權重（%）</th>
-                        <th>趨勢</th>
-                      </tr>
-                    </thead>
-                    <tbody id="fundRows"></tbody>
+              <div id="chipWorkspace">
+                <nav
+                  id="chipTabs"
+                  class="chip-tabs"
+                  role="tablist"
+                  aria-label="籌碼分析子頁"
+                ></nav>
+                <div class="chip-heading">
+                  <h3 id="chipTitle"></h3>
+                  <span id="chipPeriod" class="subtle"></span>
+                </div>
+                <div id="chipControls" class="chip-controls"></div>
+                <p id="chipUnitNote" class="subtle"></p>
+                <div id="chipSummary" class="chip-summary"></div>
+                <div class="chip-chart-frame">
+                  <div id="chipChartLegend" class="chip-chart-legend"></div>
+                  <svg
+                    id="chipChart"
+                    role="img"
+                    aria-label="籌碼分析趨勢圖"
+                  ></svg>
+                  <p id="chipChartEmpty" class="chip-empty"></p>
+                </div>
+                <p id="chipDefinition" class="chip-definition"></p>
+                <div class="chip-table-wrap">
+                  <table>
+                    <thead id="chipTableHead"></thead>
+                    <tbody id="chipTableRows"></tbody>
                   </table>
                 </div>
-              </section>
-              <details class="research-sources">
-                <summary>各項資料的來源、缺漏與權限</summary>
-                <div id="chipCoverage"></div>
-              </details>
+                <div class="chip-pagination">
+                  <button id="chipPrevPage" type="button">上一頁</button
+                  ><span id="chipPageLabel"></span
+                  ><button id="chipNextPage" type="button">下一頁</button>
+                </div>
+                <div id="chipExtra"></div>
+                <details class="chip-sources">
+                  <summary>資料來源、定義與缺漏</summary>
+                  <div id="chipCoverage"></div>
+                </details>
+              </div>
             </section>
             <section
               class="panel"
@@ -1323,11 +1253,21 @@
                 </div>
                 <form id="mediaForm" class="media-controls">
                   <label
-                    >公司索引日期<input
-                      id="mediaDate"
-                      type="date"
-                      required /></label
-                  ><button type="submit" class="quiet">更新</button>
+                    >起始日期<input id="mediaStart" type="date" required
+                  /></label>
+                  <label
+                    >截止日期<input id="mediaEnd" type="date" required
+                  /></label>
+                  <button type="button" class="quiet" data-media-days="1">
+                    今日
+                  </button>
+                  <button type="button" class="quiet" data-media-days="7">
+                    近七日
+                  </button>
+                  <button type="button" class="quiet" data-media-days="30">
+                    近一月
+                  </button>
+                  <button type="submit" class="quiet">套用區間</button>
                 </form>
               </div>
               <div id="mediaSearchLinks" class="media-search-links"></div>

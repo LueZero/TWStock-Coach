@@ -2,7 +2,62 @@ import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { rows } from "./db.js";
 import { saved } from "./market-board.js";
 import { FinMind } from "./providers.js";
-import { taipeiDay, validDate } from "./lib.js";
+import { taipeiDay, validDate, addDays, daysBetween, fail } from "./lib.js";
+
+export function mediaRange(query = {}, today = taipeiDay()) {
+  if (query.date && (query.start || query.end || query.cursor))
+    fail("單日與區間參數不可同時使用");
+  if (!!query.start !== !!query.end) fail("請同時提供起始日與截止日");
+  const end = validDate(query.end || query.date || today);
+  const start = validDate(query.start || query.date || addDays(end, -6));
+  if (start > end) fail("起始日不可晚於截止日");
+  if (end > today) fail("不支援未來日期");
+  if (daysBetween(end, start) >= 31) fail("新聞區間最多 31 個日曆日");
+  const cursor = validDate(query.cursor || start);
+  if (cursor < start || cursor > end) fail("新聞查詢游標超出區間");
+  return { start, end, cursor };
+}
+
+export function filterMediaRange(items, start, end) {
+  return items.filter((item) => {
+    const day =
+      item.timezone_known === false
+        ? item.published_at.slice(0, 10)
+        : Number.isFinite(Date.parse(item.published_at))
+          ? taipeiDay(item.published_at)
+          : "";
+    return day >= start && day <= end;
+  });
+}
+
+// Small pages keep requests bounded while the client progressively loads the range.
+export async function stockMediaRange(
+  market,
+  symbol,
+  query,
+  loadDay = stockMedia,
+) {
+  const { start, end, cursor } = mediaRange(query);
+  const pageEnd = cursor;
+  const page = await loadDay(market, symbol, cursor);
+  return {
+    ...page,
+    start,
+    end,
+    page_start: cursor,
+    page_end: pageEnd,
+    next_cursor: pageEnd < end ? addDays(pageEnd, 1) : null,
+    failed_dates:
+      page.warning || !page.sources.find((s) => s.id === "finmind")?.available
+        ? [cursor]
+        : [],
+    notes: [
+      "公司索引依區間逐日查詢，包含週末與假日；每次最多 31 個日曆日。",
+      "Yahoo、PTT 與 Google RSS 僅有近期文章，依選取區間篩選，不代表完整歷史。",
+      ...(page.notes || []).slice(1),
+    ],
+  };
+}
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -82,7 +137,7 @@ export function related(items, name, symbol) {
       : [];
   });
 }
-export function mergeMedia(items) {
+export function mergeMedia(items, limit = 60) {
   const seen = new Set();
   return items
     .sort((a, b) => b.published_at.localeCompare(a.published_at))
@@ -96,7 +151,7 @@ export function mergeMedia(items) {
       seen.add(key);
       return true;
     })
-    .slice(0, 60);
+    .slice(0, limit);
 }
 async function feed(url, source) {
   const response = await fetch(url, {
@@ -218,7 +273,7 @@ export async function stockMedia(market, symbol, requested) {
     specs.map(async ([id, label, load]) => {
       try {
         const value = await saved(
-          `media:${id}:${market}:${symbol}:${date}`,
+          `media:${id}:${market}:${symbol}:${id === "finmind" ? date : "recent"}`,
           600000,
           async () => ({
             date,
@@ -238,7 +293,12 @@ export async function stockMedia(market, symbol, requested) {
       }
     }),
   );
-  const all = mergeMedia(results.flatMap((s) => s.data));
+  for (const source of results)
+    source.data = filterMediaRange(source.data, date, date);
+  const all = mergeMedia(
+    results.flatMap((s) => s.data),
+    Infinity,
+  );
   const isForum = (r) =>
     /\/(forum|bbs)\//.test(new URL(r.url).pathname) ||
     /(^|\.)dcard\.tw$/.test(new URL(r.url).hostname);

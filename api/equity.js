@@ -1,10 +1,14 @@
 import { num, sum, median, daysBetween, taipeiDay, now } from "./lib.js";
 import { snapshots } from "./fundamentals.js";
 import { rows as queryRows } from "./db.js";
+import { buildChipWorkspace } from "./chip-workspace.js";
 export const DATASETS = {
   CompanyProfile: ["公司基本資料", null],
   TaiwanStockInstitutionalInvestorsBuySell: ["三大法人買賣超", null],
   TaiwanStockShareholding: ["外資持股", null],
+  TaiwanStockMarginPurchaseShortSale: ["個股融資融券", null],
+  DirectorHoldingsReport: ["董監持股", null],
+  InsiderTransfersReport: ["申報轉讓", null],
   TaiwanStockHoldingSharesPer: [
     "股東持股分級",
     "集保最新免費；歷史資料需 Backer／Sponsor",
@@ -263,16 +267,17 @@ export async function view(market, symbol, start, end, cutoff = now()) {
       ]),
     ),
     result = chipSummary(data, start, visibleEnd, market),
-    dates = Object.values(data)
-      .flat()
-      .map((r) => r.date)
-      .sort();
-  result.history = chipSummary(
+    dailyPrices = await queryRows(
+      "SELECT trade_date,close,volume FROM bars WHERE market=$1 AND symbol=$2 AND timeframe='1d' AND session='daily_aggregate' AND price_basis='raw' AND is_final=true AND trade_date BETWEEN $3::date-interval '90 days' AND $4::date AND received_at<=$5 ORDER BY trade_date",
+      [market, symbol, start, visibleEnd, cutoff],
+    );
+  result.workspace = buildChipWorkspace(
     data,
-    dates[0] ?? start,
+    start,
     visibleEnd,
-    market,
-  ).history;
+    result.details.institutions,
+    dailyPrices,
+  );
   const instrument = (
       await queryRows(
         "SELECT * FROM instruments WHERE market=$1 AND symbol=$2",
@@ -330,6 +335,7 @@ export async function view(market, symbol, start, end, cutoff = now()) {
     },
     fund_holdings: Object.values(funds),
     fund_history: fundRows,
+    director_observations: data.DirectorHoldingsReport ?? [],
     coverage: Object.entries(DATASETS).map(
       ([dataset, [label, entitlement]]) => ({
         dataset,

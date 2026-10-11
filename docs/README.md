@@ -1,5 +1,7 @@
 # 文件索引
 
+個股籌碼九個子頁的當前內容、來源與限制，見[個股籌碼工作區](CHIP_WORKSPACE.md)。
+
 更新：2026-10-11；程式版本1.2.0。文件以目前Node.js API、Vite MVC前端及三個Compose後端服務為準。
 
 | 閱讀順序 | 文件                                       | 內容                                        |
@@ -11,6 +13,7 @@
 | 5        | [驗證紀錄](VALIDATION.md)                  | 現行測試、資料庫隔離、瀏覽器與歷史紀錄      |
 | 功能     | [大盤市場](MARKET_BOARD.md)                | 指數、台指期日夜盤、共用五檔、技術與籌碼    |
 | 功能     | [分析契約](ANALYSIS_DESIGN.md)             | 基本、財務、籌碼、配色及資料可得性          |
+| 功能     | [籌碼內容核對](CHIP_PARITY_AUDIT.md)       | CMoney九個子頁、現有落差與後續實作規格      |
 | 功能     | [財務導覽](FINANCIAL_NAVIGATION.md)        | 五類38細項、操作與運作條件                  |
 | 功能     | [財務內容核對](FINANCIAL_PARITY_AUDIT.md)  | 指標／圖表／表格覆蓋、外部平台落差          |
 | 功能     | [計算機與同業](CALCULATOR_PEERS_DESIGN.md) | 交易成本、自動跳檔、候選名單與共同期間      |

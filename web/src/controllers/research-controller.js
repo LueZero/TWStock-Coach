@@ -11,8 +11,8 @@ import {
   renderChips,
   periodDate,
   renderInsight,
-  renderBranches,
 } from "./../views/research-view.js";
+import { initChipWorkspace } from "../views/chip-workspace-view.js";
 import { postOptions, loadFinancials } from "./analysis-controller.js";
 
 let equityVersion = 0,
@@ -97,7 +97,7 @@ async function refreshEquity(load = false) {
     $("basicStatus").textContent =
       `${state.stock.name} ${state.stock.symbol} · 公司基本資料與機構研究。`;
     $("chipStatus").textContent =
-      `${state.stock.name} ${state.stock.symbol} · ${data.start} 至 ${data.end} · ${historical ? "所選 K 線當時可得" : "最新取得修訂"}。${data.note}`;
+      `${state.stock.name} ${state.stock.symbol} · ${data.start} 至 ${data.end} · ${historical ? "所選 K 線當時可得" : "最新取得修訂"} · 盤後資料，各子頁更新頻率不同。`;
     if (load && !historical) {
       const job = await analysisJson(
         "/api/equity/load",
@@ -228,8 +228,7 @@ export function initResearchController() {
     refreshEquity(true);
   };
   $("refreshChips").onclick = () => refreshEquity(true);
-  $("branchSort").onchange = renderBranches;
-  $("branchSearch").oninput = renderBranches;
+  initChipWorkspace();
   [$("basicViewMode"), $("chipViewMode")].forEach(
     (select) =>
       (select.onchange = () => {

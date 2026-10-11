@@ -1,5 +1,7 @@
 # 基本、財務與籌碼分析契約
 
+籌碼分析已改為九個子頁，新增資券與官方董監／轉讓揭露。以下早期籌碼表格保留原資料契約背景，當前子頁、門檻、來源及限制以[個股籌碼工作區](CHIP_WORKSPACE.md)為準。
+
 更新：2026-10-11。實作在 api/fundamentals.js、financial-metrics.js、equity.js、peers.js；前端在 web/src/views 與 web/src/controllers。綜合健診與建議視窗、入口、分數程式及停用API已移除。策略回放保留個股分頁；預測只有 GET /api/research/:market/:symbol，尚無前台預測頁。
 
 ## 閱讀與配色

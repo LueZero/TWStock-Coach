@@ -54,6 +54,10 @@ async function selectStock(stock) {
   state.controller = new AbortController();
   state.generation++;
   state.stock = stock;
+  state.assistantOverlay = null;
+  document.dispatchEvent(
+    new CustomEvent("stock-coach:stock", { detail: { stock } }),
+  );
   mediaChanged();
   if ($("dashboardGrid").dataset.view === "indices")
     document.querySelector('[data-app-page="stock"]').click();
@@ -328,6 +332,9 @@ function pollJob(id, gen, attempt) {
 
 function selectBar(row) {
   state.selected = row;
+  document.dispatchEvent(
+    new CustomEvent("stock-coach:bar", { detail: { row } }),
+  );
   $("selectedBar").textContent =
     `${localTime(row.timestamp)} · ${periodLabel()} K · 收盤 ${fmt(row.close)} · ${row.is_final ? "已完成" : "未完成"} · ${row.signals?.join("、") || "無交叉／突破訊號"}`;
   renderAnalysis();

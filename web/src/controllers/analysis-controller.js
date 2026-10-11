@@ -180,6 +180,7 @@ function selectSection(view, scroll = true) {
   if (
     ![
       "overview",
+      "assistant",
       "indices",
       "technical",
       "basic",
@@ -207,13 +208,16 @@ function selectSection(view, scroll = true) {
     "peers",
     "indices",
     "news",
+    "assistant",
   ].includes(view);
   const page =
-    view === "indices"
-      ? "market"
-      : view === "calculator"
-        ? "calculator"
-        : "stock";
+    view === "assistant"
+      ? "assistant"
+      : view === "indices"
+        ? "market"
+        : view === "calculator"
+          ? "calculator"
+          : "stock";
   $("sectionNav").hidden = page !== "stock";
   document
     .querySelectorAll("[data-app-page]")
@@ -235,6 +239,9 @@ function selectSection(view, scroll = true) {
   if (view === "overview") plot();
   if (view === "indices") marketBoardChanged();
   mediaChanged();
+  document.dispatchEvent(
+    new CustomEvent("stock-coach:section", { detail: { view } }),
+  );
   if (
     ["basic", "chips"].includes(view) &&
     typeof researchChanged === "function"
@@ -305,9 +312,12 @@ export function initAnalysisController() {
   document.querySelectorAll("[data-app-page]").forEach((button) => {
     button.onclick = () =>
       selectSection(
-        { market: "indices", calculator: "calculator", stock: "overview" }[
-          button.dataset.appPage
-        ],
+        {
+          market: "indices",
+          calculator: "calculator",
+          stock: "overview",
+          assistant: "assistant",
+        }[button.dataset.appPage],
         false,
       );
   });

@@ -46,6 +46,9 @@
       </div>
     </header>
     <nav class="workspace-menu mobile-page-menu" aria-label="主要頁面">
+      <button data-app-page="assistant" aria-pressed="false">
+        <span>✦</span> AI 分析報告
+      </button>
       <button data-app-page="stock" aria-pressed="true">
         <span>◈</span> 個股看盤<small>STOCK RESEARCH</small>
       </button>
@@ -61,6 +64,9 @@
       <aside class="sidebar">
         <div class="sidebar-caption">WORKSPACE</div>
         <nav class="workspace-menu sidebar-page-menu" aria-label="主要頁面">
+          <button data-app-page="assistant" aria-pressed="false">
+            <span>✦</span> AI 分析報告
+          </button>
           <button data-app-page="stock" aria-pressed="true">
             <span>◈</span> 個股看盤
           </button>
@@ -1239,6 +1245,198 @@
                 <summary>來源、修訂與缺漏</summary>
                 <div id="peerSources" class="peer-sources"></div>
               </details>
+            </section>
+            <section
+              id="assistantPanel"
+              class="panel assistant-panel"
+              data-view-panel="assistant"
+              hidden
+            >
+              <div class="assistant-heading">
+                <div>
+                  <span class="panel-kicker">AI RESEARCH WORKSPACE</span>
+                  <h2 id="assistantTitle">個股分析報告</h2>
+                  <p id="assistantMeta" class="subtle">
+                    選取股票，建立可追溯的分析報告。
+                  </p>
+                </div>
+                <div class="assistant-actions">
+                  <button id="assistantGenerate" class="primary" type="button">
+                    產生新報告</button
+                  ><button
+                    id="assistantToggleChat"
+                    class="quiet"
+                    type="button"
+                    aria-expanded="true"
+                  >
+                    收合聊天
+                  </button>
+                </div>
+              </div>
+              <div class="assistant-context">
+                <label
+                  >分析視角<select id="assistantMode">
+                    <option value="latest">最新波段分析</option>
+                    <option value="historical">選取日K當時可得資料</option>
+                  </select></label
+                >
+                <label>分析起日<input id="assistantStart" type="date" /></label>
+                <label
+                  >本金上限<input
+                    id="assistantCapital"
+                    type="number"
+                    min="100"
+                    value="100000"
+                /></label>
+                <label
+                  >單次風險額度<input
+                    id="assistantRisk"
+                    type="number"
+                    min="1"
+                    value="2000"
+                /></label>
+                <details class="assistant-position">
+                  <summary>持倉與費用</summary>
+                  <div>
+                    <label
+                      >持有股數<input
+                        id="assistantShares"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value="0"
+                    /></label>
+                    <label
+                      >每股成本<input
+                        id="assistantCost"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="未持有可留空"
+                    /></label>
+                    <label
+                      >手續費折扣<input
+                        id="assistantDiscount"
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value="6"
+                    /></label>
+                    <label
+                      >最低手續費<input
+                        id="assistantMinimum"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value="20"
+                    /></label>
+                  </div>
+                </details>
+                <label
+                  >已存報告<select id="assistantHistory">
+                    <option value="">選擇報告版本</option>
+                  </select></label
+                >
+              </div>
+              <p
+                id="assistantStatus"
+                class="assistant-status"
+                role="status"
+                aria-live="polite"
+              >
+                正在確認助手服務…
+              </p>
+              <form id="assistantLogin" class="assistant-login">
+                <label
+                  >平台存取密碼<input
+                    id="assistantAccessKey"
+                    type="password"
+                    autocomplete="off"
+                    required
+                    placeholder="填入 .env 的 ASSISTANT_ACCESS_KEY" /></label
+                ><button type="submit" class="quiet">解鎖助手</button
+                ><span
+                  >使用 .env 的 ASSISTANT_ACCESS_KEY 解鎖；Codex 使用已登入的
+                  ChatGPT 訂閱帳號。</span
+                >
+              </form>
+              <div class="assistant-workspace">
+                <div class="assistant-report">
+                  <nav class="assistant-tabs" aria-label="分析報告內容">
+                    <button data-report-tab="summary" aria-pressed="true">
+                      重點摘要</button
+                    ><button data-report-tab="plan">進出場計畫</button
+                    ><button data-report-tab="evidence">分析依據</button
+                    ><button data-report-tab="quality">資料品質</button
+                    ><button data-report-tab="chart">K 線引導</button>
+                  </nav>
+                  <div id="assistantContent" class="assistant-content">
+                    <div class="assistant-welcome">
+                      <span>✦</span>
+                      <h3>看懂依據，再判斷時機</h3>
+                      <p>
+                        報告結合完成日
+                        K、財務、籌碼、同業、新聞與已保存的大盤資料。先告訴你目前狀態，再說需要等待什麼條件。
+                      </p>
+                      <p>缺少資料會直接說明；AI 不保證獲利，也不替你下單。</p>
+                    </div>
+                  </div>
+                </div>
+                <aside id="assistantChat" class="assistant-chat">
+                  <div class="assistant-chat-heading">
+                    <h3>看盤助手</h3>
+                    <span id="assistantServiceBadge">確認連線</span>
+                  </div>
+                  <div
+                    id="assistantMessages"
+                    class="assistant-messages"
+                    role="log"
+                    aria-label="看盤助手對話"
+                  ></div>
+                  <div class="assistant-prompts">
+                    <button
+                      type="button"
+                      data-assistant-question="現在適合進場嗎？有哪些條件尚未確認？"
+                    >
+                      進場時機</button
+                    ><button
+                      type="button"
+                      data-assistant-question="如果已持有，什麼情況需要檢查續抱或退出？"
+                    >
+                      出場觀察</button
+                    ><button
+                      type="button"
+                      data-assistant-question="請說明大盤與籌碼目前如何支持或反對這份計畫，缺資料請直接說。"
+                    >
+                      大盤與籌碼
+                    </button>
+                  </div>
+                  <form id="assistantMessageForm">
+                    <label class="visually-hidden" for="assistantMessage"
+                      >向看盤助手提問</label
+                    ><textarea
+                      id="assistantMessage"
+                      maxlength="2000"
+                      rows="3"
+                      placeholder="例如：我還沒買，該等待什麼訊號？"
+                    ></textarea>
+                    <div>
+                      <small>訊息與分析資料會送至 AI；持倉資料可選填。</small
+                      ><button
+                        id="assistantCancel"
+                        class="quiet"
+                        type="button"
+                        hidden
+                      >
+                        取消</button
+                      ><button id="assistantSend" class="primary" type="submit">
+                        送出
+                      </button>
+                    </div>
+                  </form>
+                </aside>
+              </div>
             </section>
             <section
               id="newsPanel"

@@ -33,6 +33,8 @@ import { enqueue } from "./jobs.js";
 import { evaluate, backtest } from "./strategy.js";
 import { forecast } from "./research.js";
 import { contract, protectedPaths } from "./contracts.js";
+import { buildSnapshot } from "./research-packet.js";
+import { buildRuleReport } from "./report-conditions.js";
 const choice = (v, values, fallback) => {
     v ??= fallback;
     if (!values.includes(v)) fail("參數不符：" + v);
@@ -568,5 +570,13 @@ export async function createApp({ logger = false } = {}) {
       fail("批次需包含1至5000根K線");
     return ingest(request.body);
   });
+  app.post(
+    "/api/research/report-input",
+    { bodyLimit: 16384 },
+    async (request) => {
+      const input = await buildSnapshot(request.body);
+      return { input, report: buildRuleReport(input) };
+    },
+  );
   return app;
 }

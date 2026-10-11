@@ -8,20 +8,20 @@
 
 開源台股看盤與研究平台，整合歷史行情、技術分析、財務資料、籌碼觀察、同業比較與交易成本試算。前端採 Vite 與 JavaScript MVC，後端採 Node.js／Fastify，資料儲存於 PostgreSQL。
 
-**前端與 API 獨立啟動、建置及部署。** Docker Compose 管理後端、排程與資料庫；看盤頁面由前端服務提供。核心分析由程式執行，不依賴大型語言模型或 Token 型助手。
+**前端與 API 獨立啟動、建置及部署。** Docker Compose 管理股票 API、行情排程與資料庫；前端與選配 AI Agent 目前在本機執行。核心指標與交易條件由程式計算，AI Agent 呼叫本機 Codex CLI 解讀固定資料包並支援聊天追問。
 
-[快速開始](#快速開始) · [介面預覽](#介面預覽) · [功能與資料覆蓋](#功能與資料覆蓋) · [部署](#部署) · [貢獻](#貢獻與授權)
+[快速開始](#快速開始) · [本機 AI Agent](#本機-codex-cli-與-ai-agent) · [介面預覽](#介面預覽) · [功能與資料覆蓋](#功能與資料覆蓋) · [部署](#部署) · [貢獻](#貢獻與授權)
 
 ## 版本與專案狀態
 
-| 項目         | 說明                                                            |
-| ------------ | --------------------------------------------------------------- |
-| 目前程式版本 | **1.2.0**，前後端套件與 OpenAPI 版本同步                        |
-| 狀態         | 持續開發；適合個人自選股監控與研究                              |
-| 授權         | [MIT](LICENSE)                                                  |
-| 版本標記     | 建議 Git tag：`v1.2.0`；程式版本更新不會自動發布 GitHub Release |
-| 主要變更     | 三個獨立主菜單、前後端分離、共用五檔；工作及資料完整性修正      |
-| 功能成熟度   | 已實作功能、來源權限限制與實驗性研究功能分開列示                |
+| 項目         | 說明                                                                     |
+| ------------ | ------------------------------------------------------------------------ |
+| 目前程式版本 | **1.2.0**，前後端套件與 OpenAPI 版本同步                                 |
+| 狀態         | 持續開發；適合個人自選股監控與研究                                       |
+| 授權         | [MIT](LICENSE)                                                           |
+| 版本標記     | 建議 Git tag：`v1.2.0`；程式版本更新不會自動發布 GitHub Release          |
+| 主要變更     | 四個獨立主菜單、Codex CLI報告、固定資料包及K線引導；共用五檔與前後端分離 |
+| 功能成熟度   | 已實作功能、來源權限限制與實驗性研究功能分開列示                         |
 
 上方徽章表示版本、技術及授權資訊，不代表已配置遠端 CI 或發布正式 Release。
 
@@ -64,6 +64,51 @@ npm run dev
 
 也可進入 `web/` 執行 `npm run dev`。前端的 `/api`、`/docs`、`/health` 與 `/openapi.json` 由 Vite 代理至本機 API。
 
+### 本機 Codex CLI 與 AI Agent
+
+AI 功能使用本機 Codex CLI 與 **ChatGPT 訂閱登入**。股票 Compose 服務照常運行，AI Agent 另開終端啟動，不需啟動 Agent 容器。一般看盤與數值分析不需啟動 AI Agent。
+
+先依 [Codex CLI 官方安裝說明](https://learn.chatgpt.com/docs/codex/cli) 安裝本機 CLI。已安裝者可直接檢查版本與登入；目前專案實測版本為 `0.160.1`，升級後應確認平台分析與追問相容性。
+
+```powershell
+codex --version
+codex login
+codex login status
+```
+
+登入時使用自己的 ChatGPT 訂閱帳號完成瀏覽器驗證；狀態應顯示 `Logged in using ChatGPT`。若已登入便不需重複登入。登入與執行 Agent 使用相同的作業系統帳號及 `CODEX_HOME`。本平台只接受 ChatGPT 登入，不使用 OpenAI API Key；登入方式見[官方認證文件](https://learn.chatgpt.com/docs/auth)。
+
+在專案根目錄另開終端執行：
+
+```powershell
+Set-Location D:\AI\TWStock-Coach
+npm run assistant:setup
+npm run assistant:start
+```
+
+`assistant:setup` 在 `.env` 建立平台存取密碼，保留既有非空設定。`assistant:start` 啟動 `node agent/index.js`，預設監聽 `127.0.0.1:8010`；它是接收前台請求的常駐橋接服務，不是另一套自製 agent loop。請保持終端開啟，按 `Ctrl+C` 可停止；`docker compose down` 不會停止本機 Agent。
+
+前端與 Agent 各用一個終端：前者執行 `npm run dev`，後者執行 `npm run assistant:start`。操作入口仍為 [http://127.0.0.1:5173](http://127.0.0.1:5173)，8010 是 Agent 的 HTTP 服務埠，沒有獨立看盤頁面。
+
+1. 在平台切換至「AI 分析報告」，將 `.env` 中 `ASSISTANT_ACCESS_KEY` 等號後的值填入「平台存取密碼」，解鎖助手。它與 Codex 訂閱登入分開。
+2. 選擇股票、分析區間、本金與風險額度，按產生新報告。股票 API 回傳固定研究資料包，前端將資料包提交給本機 Agent。
+3. Agent 使用 `codex exec` 分析，完成後保存報告。可閱讀五個報告分頁、查看 K 線引導，或下載 Markdown／JSON。
+4. 聊天追問使用 `codex exec resume <session-id>` 接續原生會話。追問沿用原資料；要分析最新行情或變更設定，請產生新報告。
+
+每次新分析建立 `reports/<報告 UUID>/report.md` 與 `report.json`；報告已排除 Git 追蹤，請另行備份。Codex 認證與原生 session 保存在本機使用的 `CODEX_HOME`，未指定時使用使用者的 `.codex` 目錄；報告 JSON 的 session ID 無法單獨還原 CLI 會話。分析及追問使用訂閱額度，原生 session 仍會累積上下文。
+
+Windows 平台的橋接程式直接啟動 CLI，不經命令殼層。若 CLI 不在 PATH，或 `codex` 只解析到 npm 的 `.cmd` 包裝檔，請指定實際的 `codex.exe`：
+
+```powershell
+# 將路徑替換成自己安裝的原生 CLI 執行檔
+$env:CODEX_BIN = "C:\Tools\Codex\codex.exe"
+& $env:CODEX_BIN --version
+& $env:CODEX_BIN login status
+npm run assistant:start
+```
+
+也可在 `.env` 設定 `CODEX_BIN` 後重啟 Agent。使用 VS Code 附帶的 CLI 時，請確認執行檔路徑；擴充套件更新可能改變路徑。若顯示 `EADDRINUSE`，表示 8010 已有服務，先確認既有 Agent，避免重複啟動。若前台顯示離線，先查看 Agent 終端；可在 PowerShell 執行 `Invoke-RestMethod http://127.0.0.1:8010/api/assistant/status` 檢查 CLI 與訂閱登入狀態。
+
 ### 前端建置與預覽
 
 ```sh
@@ -76,6 +121,14 @@ npm run preview    # 本機預覽：http://127.0.0.1:4173
 ## 介面預覽
 
 以下為平台實際運行畫面。畫面中的資料時間與來源狀態請以介面標示為準。
+
+### AI 個股分析報告
+
+![個股分析報告：重點摘要、資料狀態與聊天助手](web/public/images/screenshots/ai-report.png)
+
+報告分為摘要、進出場計畫、分析依據、資料品質與K線引導。固定價格／資料修訂，缺資料不補零；第一版支援波段完成日線。每次新分析保存一份Markdown／JSON報告，追問沿用CLI原生session，不使用助手資料表或worker佇列。模型解讀不代表已確認買點，尚無量化勝率、自動下單或當沖報告。啟用與驗證見[AI報告文件](docs/FEATURES.md#ai-分析報告)。
+
+本機安裝、訂閱登入、啟動與報告操作見[本機 AI Agent](#本機-codex-cli-與-ai-agent)。
 
 ### 台股看盤工作台
 
@@ -91,7 +144,7 @@ npm run preview    # 本機預覽：http://127.0.0.1:4173
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | ![上市法人買賣、融資融券與台指期法人](web/public/images/screenshots/market-chips.png) | ![公司新聞左欄與公開討論右欄](web/public/images/screenshots/company-news.png) |
 
-主菜單切換「個股看盤／大盤市場／股票計算機」，內容在同一頁中央更新。股票計算機為獨立工具頁，可透過頂部搜尋選取股票，不顯示個股行情與研究分頁。個股的「熱門新聞」位於同業比較旁；大盤分為即時走勢、技術分析與籌碼分析。
+主菜單切換「AI分析報告／個股看盤／大盤市場／股票計算機」，內容在同一頁中央更新。股票計算機為獨立工具頁，可透過頂部搜尋選取股票，不顯示個股行情與研究分頁。個股的「熱門新聞」位於同業比較旁；大盤分為即時走勢、技術分析與籌碼分析。
 
 大盤桌機版依視窗高度配置走勢、五檔、技術卡片與籌碼明細，已核對1280×720至1920×1080等常見尺寸同屏可見。大盤五檔與個股共用欄位、字體、紅綠配色、深度色帶與委託合計；期貨數量以口表示，代表尚未成交的委託契約數。排版驗證可執行 `npm run verify:market-layout`。
 
@@ -107,7 +160,7 @@ npm run preview    # 本機預覽：http://127.0.0.1:4173
 
 ## 功能與資料覆蓋
 
-個股籌碼提供九個子頁：法人買賣、主力進出、券商分點、籌碼分布、大戶散戶、融資融券、董監持股、申報轉讓、ETF／基金持股。主圖與明細依選定區間切換；股／張顯示共用。已接入個股資券及上市／上櫃官方揭露，主力與分點的會員來源、基金覆蓋及歷史資料限制見[個股籌碼工作區](docs/CHIP_WORKSPACE.md)。
+個股籌碼提供九個子頁：法人買賣、主力進出、券商分點、籌碼分布、大戶散戶、融資融券、董監持股、申報轉讓、ETF／基金持股。主圖與明細依選定區間切換；股／張顯示共用。已接入個股資券及上市／上櫃官方揭露，主力與分點的會員來源、基金覆蓋及歷史資料限制見[個股籌碼工作區](docs/FEATURES.md#籌碼分析)。
 
 ![個股籌碼九個子頁與法人買賣趨勢](web/public/images/screenshots/stock-chips.png)
 
@@ -121,7 +174,7 @@ npm run preview    # 本機預覽：http://127.0.0.1:4173
 | 大盤市場       | 獨立主菜單、即時走勢、歷史技術指標、上市法人／融資融券、台指期法人、期貨日夜盤五檔   | 指數沒有委託五檔；籌碼為收盤日統計；期貨不拼接契約，指數日線只用官方收盤值                                    |
 | 公司媒體       | 公司新聞、右側公開討論、起訖日期、今日／近七日／近一月、逐日進度、來源狀態與更多文章 | 公司索引逐日合併，單次最多31日；Yahoo／PTT只涵蓋近期RSS，歷史不完整；Google RSS需符合個人非商業條件後自行啟用 |
 | 基本分析       | 公司資料與機構研究資料介面                                                           | 股利在財務分析；法人目標及研究報告需授權資料，並非內建完整覆蓋                                                |
-| 財務分析       | 財務報表、獲利能力、安全性、成長能力、價值評估五類共 38 細項導覽；歷史圖表與表格     | 選單已實作；部分指標、河流圖等仍缺必要資料，詳見[內容核對](docs/FINANCIAL_PARITY_AUDIT.md)                    |
+| 財務分析       | 財務報表、獲利能力、安全性、成長能力、價值評估五類共 38 細項導覽；歷史圖表與表格     | 選單已實作；部分指標、河流圖等仍缺必要資料，詳見[內容核對](docs/FEATURES.md#財務內容與差異)                   |
 | 籌碼分析       | 法人流量、分點代理、股權分布、ETF／基金持股與股／張換算                              | 依來源與權限；免費集保資料僅最新週，歷史需累積；不推測交易者身分                                              |
 | 股票計算機     | 買入、賣出、當沖、零股、折扣、最低手續費、稅、損益及損益兩平；跨級距跳檔             | 費用用十進位計算；不判定帳戶是否可當沖，不含融資融券                                                          |
 | 同業比較       | 完整產業候選、業務相近組、共同期間、中位數、缺漏與過期資訊                           | 同產業不代表直接競爭；資料不足會明示                                                                          |
@@ -150,17 +203,22 @@ flowchart LR
   Scheduler --> Sources[行情 / 財務來源]
   Sources --> Scheduler
   API --> Quotes[公開報價快照]
+  Web --> Agent[本機 Node.js AI Agent：8010]
+  Agent --> CLI[本機 Codex CLI／原生 session]
+  CLI --> Agent
+  Agent --> Reports[reports：Markdown／JSON]
 ```
 
-| 層級     | 技術與部署方式                                            |
-| -------- | --------------------------------------------------------- |
-| 前端     | Vite 8、ES modules、Bootstrap 5、JavaScript MVC、SVG 圖表 |
-| API      | Fastify 5、OpenAPI、JSON API；不提供股票工作台檔案        |
-| 工作程序 | Node.js、PostgreSQL 工作佇列、排程與來源限流              |
-| 資料庫   | PostgreSQL 17、SQL 遷移、行情唯一鍵與修訂                 |
-| 計算     | 原生 JavaScript 指標／財務計算、decimal.js 費用運算       |
-| 後端部署 | Compose：`postgres`、`api`、`scheduler` 三個服務          |
-| 前端部署 | 獨立靜態主機，透過同源反向代理連接 API                    |
+| 層級     | 技術與部署方式                                             |
+| -------- | ---------------------------------------------------------- |
+| 前端     | Vite 8、ES modules、Bootstrap 5、JavaScript MVC、SVG 圖表  |
+| API      | Fastify 5、OpenAPI、JSON API；不提供股票工作台檔案         |
+| 工作程序 | Node.js、PostgreSQL 工作佇列、排程與來源限流               |
+| 資料庫   | PostgreSQL 17、SQL 遷移、行情唯一鍵與修訂                  |
+| 計算     | 原生 JavaScript 指標／財務計算、decimal.js 費用運算        |
+| 後端部署 | Compose：`postgres`、`api`、`scheduler`                    |
+| AI Agent | 本機 `npm run assistant:start`，呼叫已登入訂閱的 Codex CLI |
+| 前端部署 | 獨立靜態主機，透過同源反向代理連接 API                     |
 
 API 的 `/docs` 保留自己的文件頁與 Swagger 資源；股票頁面、圖片、CSS 與前端原始碼由前端服務管理。
 
@@ -169,6 +227,8 @@ API 的 `/docs` 保留自己的文件頁與 Swagger 資源；股票頁面、圖�
 ```text
 TWStock-Coach/
 ├── api/                 # Node.js API、分析、資料來源、工作與 SQL 遷移
+├── agent/               # 本機 Codex CLI 橋接與檔案報告保存
+├── reports/             # 每次分析的 Markdown／JSON，不提交版本控制
 ├── web/
 │   ├── index.html       # Vite 入口
 │   ├── src/             # MVC 模組、樣式與啟動程式
@@ -179,7 +239,7 @@ TWStock-Coach/
 │   └── dist/            # 建置產物，不提交版本控制
 ├── scripts/             # 設定與服務／瀏覽器驗證
 ├── tests/               # API 邊界回歸測試
-├── docs/                # 架構、部署、分析及驗證文件
+├── docs/                # 架構設計與功能設計（兩份）
 ├── compose.yaml         # 後端服務
 ├── Dockerfile           # 獨立 API／排程映像
 ├── CONTRIBUTING.md      # 貢獻流程
@@ -188,20 +248,26 @@ TWStock-Coach/
 
 ## 設定
 
-| 變數                       | 用途                         | 預設或範例                                                     |
-| -------------------------- | ---------------------------- | -------------------------------------------------------------- |
-| `POSTGRES_PASSWORD`        | Compose 資料庫密碼           | setup 產生                                                     |
-| `INGEST_API_KEY`           | 授權匯入的 `X-API-Key`       | setup 產生，不傳至前端                                         |
-| `FINMIND_TOKEN`            | FinMind 會員權限             | 選填，依資料項目需相應方案                                     |
-| `WATCHLIST`                | 定期更新清單，不限制前台搜尋 | `TWSE:2330,TWSE:0050,TPEX:6488`                                |
-| `BACKFILL_START`           | 首次日線回補起日             | `2021-01-01`                                                   |
-| `ENABLE_ADJUSTED`          | 另外擷取還原價               | `false`                                                        |
-| `FINMIND_REQUEST_INTERVAL` | 來源請求間隔秒數             | `8`，最低 `1`                                                  |
-| `ETF_WATCHLIST`            | 指定主動 ETF                 | 選填，最多 10 檔                                               |
-| `GOOGLE_NEWS_ENABLED`      | Google 新聞 RSS 個人閱讀     | `false`；第三方用途限制見[公司媒體設計](docs/COMPANY_MEDIA.md) |
-| `API_PROXY_TARGET`         | Vite 開發／預覽的 API 目標   | `http://127.0.0.1:8000`                                        |
+| 變數                       | 用途                         | 預設或範例                                                                   |
+| -------------------------- | ---------------------------- | ---------------------------------------------------------------------------- |
+| `POSTGRES_PASSWORD`        | Compose 資料庫密碼           | setup 產生                                                                   |
+| `INGEST_API_KEY`           | 授權匯入的 `X-API-Key`       | setup 產生，不傳至前端                                                       |
+| `FINMIND_TOKEN`            | FinMind 會員權限             | 選填，依資料項目需相應方案                                                   |
+| `WATCHLIST`                | 定期更新清單，不限制前台搜尋 | `TWSE:2330,TWSE:0050,TPEX:6488`                                              |
+| `BACKFILL_START`           | 首次日線回補起日             | `2021-01-01`                                                                 |
+| `ENABLE_ADJUSTED`          | 另外擷取還原價               | `false`                                                                      |
+| `FINMIND_REQUEST_INTERVAL` | 來源請求間隔秒數             | `8`，最低 `1`                                                                |
+| `ETF_WATCHLIST`            | 指定主動 ETF                 | 選填，最多 10 檔                                                             |
+| `GOOGLE_NEWS_ENABLED`      | Google 新聞 RSS 個人閱讀     | `false`；第三方用途限制見[公司媒體設計](docs/FEATURES.md#熱門新聞與公開討論) |
+| `API_PROXY_TARGET`         | Vite 開發／預覽的 API 目標   | `http://127.0.0.1:8000`                                                      |
+| `ASSISTANT_ACCESS_KEY`     | 平台 AI 功能存取密碼         | `npm run assistant:setup` 產生，不是 OpenAI API Key                          |
+| `CODEX_BIN`                | 本機 Codex CLI 執行檔        | 預設 `codex`；Windows 可指定原生 `codex.exe` 完整路徑                        |
+| `ASSISTANT_PORT`           | 本機 Agent 連接埠            | `8010`                                                                       |
+| `ASSISTANT_REPORT_DIR`     | 分析報告保存目錄             | `reports`                                                                    |
+| `ASSISTANT_MODEL`          | CLI 使用的模型               | 留空沿用 CLI 預設，須為訂閱帳號可用模型                                      |
+| `ASSISTANT_PROXY_TARGET`   | Vite 的 Agent 代理目標       | `http://127.0.0.1:8010`                                                      |
 
-修改後端 `.env` 後執行 `docker compose up -d api scheduler`。修改開發代理目標則重新啟動 Vite；設定方法見部署文件。
+修改股票服務 `.env` 後執行 `docker compose up -d api scheduler`；修改本機 Agent 設定則停止並重新執行 `npm run assistant:start`。兩項 Vite 代理目標由啟動程序的環境變數讀取，修改後重啟 Vite；設定方法見[架構設計](docs/DESIGN.md#前端開發與預覽)。
 
 ## 部署
 
@@ -209,7 +275,9 @@ TWStock-Coach/
 
 **前端**：`npm run build`，將 `web/dist` 部署至獨立靜態主機。主機需將 `/api`、`/docs`、`/health` 與 `/openapi.json` 代理至 API，保留完整路徑與查詢參數；提供 [Nginx 範例](web/deploy/nginx.conf)。純靜態檔案託管仍需另配置 API 代理或閘道。
 
-API 預設綁定本機 `8000`，正式對外 HTTPS、程序管理及備份方式見 [部署與維護](docs/DEPLOYMENT.md)。`docker compose down -v` 會刪除資料卷，更新時應保留資料庫。
+**AI Agent**：在本機執行 `npm run assistant:start`，與股票容器分開管理。啟用 AI 時，反向代理須優先將 `/api/assistant` 送至 Agent 的 8010，其餘 `/api` 送至股票 API 的 8000；Vite 開發／預覽已配置這個分流。Compose 僅管理 `postgres`、`api`、`scheduler`。
+
+API 預設綁定本機 `8000`，正式對外 HTTPS、程序管理及備份方式見 [部署與維護](docs/DESIGN.md#部署與維護)。`docker compose down -v` 會刪除資料卷，更新時應保留資料庫。
 
 ## 維護與驗證
 
@@ -225,7 +293,7 @@ npm run verify:market-layout
 npm run verify:chips
 ```
 
-本次工作區可執行的 `npm test` 有 **14 項**：12項後端及2項前端，涵蓋法人組成、集保門檻、資券單位、集中度暖機、基金比較、官方揭露欄位與新聞區間。瀏覽器驗證另外檢查個股、財務導覽、計算機、九個籌碼子頁與響應式版面；新聞區間可執行 `node scripts/verify_media_range.cjs`。先前33項單元與8項資料庫整合測試保留在歷史驗證紀錄，目前檢出未包含那些完整測試檔案，不將舊結果算成本次驗證。詳見[驗證紀錄](docs/VALIDATION.md)及[個股籌碼工作區](docs/CHIP_WORKSPACE.md)。
+本次工作區可執行的 `npm test` 有 **23 項**：21項Node.js測試及2項前端，涵蓋籌碼、新聞區間與報告條件／費稅／AI回覆檢核。報告資料庫整合測試另驗證歷史修訂、研究資料包與移除助手資料表；agent另測原生session追問、存檔及取消，使用隨機schema隔離。瀏覽器另檢查原有個股功能及AI五分頁、K線、切股與響應式版面。驗證入口見[架構設計](docs/DESIGN.md#驗證與維護)，功能細項與資料限制見[功能設計](docs/FEATURES.md)。
 
 `API_BASE_URL` 可指定 API 驗證位址；`WEB_BASE_URL` 可讓服務驗證同時檢查前端。`BASE_URL` 用於瀏覽器驗證，例如改測 `4173` 建置預覽。
 
@@ -244,16 +312,7 @@ docker compose run --rm api node api/cli.js fundamentals
 
 ## 專案文件
 
-| 文件                                                | 內容                                 |
-| --------------------------------------------------- | ------------------------------------ |
-| [系統架構](docs/DESIGN.md)                          | 模組、資料契約、工作佇列與前後端邊界 |
-| [部署與維護](docs/DEPLOYMENT.md)                    | 前後端獨立部署、代理、備份與日誌     |
-| [分析設計](docs/ANALYSIS_DESIGN.md)                 | 基本、財務與籌碼分析                 |
-| [財務導覽](docs/FINANCIAL_NAVIGATION.md)            | 五類 38 細項配置                     |
-| [財務內容核對](docs/FINANCIAL_PARITY_AUDIT.md)      | 覆蓋、計算口徑與缺漏                 |
-| [計算機與同業比較](docs/CALCULATOR_PEERS_DESIGN.md) | 費用、跳檔與比較規則                 |
-| [大盤市場](docs/MARKET_BOARD.md)                    | 指數、期貨日夜盤、共用五檔與籌碼     |
-| [公司新聞與公開討論](docs/COMPANY_MEDIA.md)         | 索引、RSS、日期與來源限制            |
-| [功能與服務檢視](docs/REVIEW_2026-10-11.md)         | 本次修正、檢查證據與剩餘限制         |
-| [文件索引](docs/README.md)                          | 全部文件的閱讀順序與維護原則         |
-| [驗證紀錄](docs/VALIDATION.md)                      | 本次與歷史驗證的範圍及限制           |
+| 文件                         | 內容                                                                 |
+| ---------------------------- | -------------------------------------------------------------------- |
+| [架構設計](docs/DESIGN.md)   | 模組邊界、資料契約、Compose／Agent 啟動、部署、備份與驗證            |
+| [功能設計](docs/FEATURES.md) | 看盤、財務、籌碼、同業、新聞、大盤、計算機及 AI 報告的現行設計與限制 |

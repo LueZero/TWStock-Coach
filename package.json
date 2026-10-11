@@ -22,6 +22,10 @@
     "node": ">=22.16.0"
   },
   "scripts": {
+    "assistant:start": "node agent/index.js",
+    "assistant:setup": "node scripts/setup_assistant.js",
+    "verify:assistant": "node scripts/verify_assistant_api.js",
+    "verify:assistant-browser": "node scripts/verify_assistant_browser.cjs",
     "start": "node api/index.js",
     "dev": "npm run dev --workspace @twstock-coach/web",
     "build": "npm run build --workspace @twstock-coach/web",
@@ -33,8 +37,8 @@
     "verify": "node scripts/verify_stack.js",
     "verify:browser": "node scripts/verify_browser.cjs",
     "setup": "node scripts/setup_env.js",
-    "format": "prettier --write api web/src web/index.html web/vite.config.js web/package.json scripts/*.js tests/*.js web/tests/*.test.js package.json compose.yaml",
-    "format:check": "prettier --check api web/src web/index.html web/vite.config.js web/package.json scripts/*.js tests/*.js web/tests/*.test.js package.json compose.yaml",
+    "format": "prettier --write api agent web/src web/index.html web/vite.config.js web/package.json scripts/*.js tests/*.js web/tests/*.test.js package.json compose.yaml",
+    "format:check": "prettier --check api agent web/src web/index.html web/vite.config.js web/package.json scripts/*.js tests/*.js web/tests/*.test.js package.json compose.yaml",
     "verify:db": "node --test tests/integration.database.js",
     "verify:worker": "node scripts/verify_worker.js",
     "verify:market": "node scripts/verify_market_board.cjs",

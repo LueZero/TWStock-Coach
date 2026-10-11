@@ -48,16 +48,18 @@ export async function report(
   viewMode = "latest",
   alignment = "common",
   requested = null,
+  cutoffStamp = null,
 ) {
   const all = await rows("SELECT * FROM instruments ORDER BY symbol"),
     target = all.find((i) => key(i) === market + ":" + symbol);
   if (!target) fail("股票目錄尚無此代號，請先搜尋股票");
   const receipt =
-      viewMode === "historical"
+      cutoffStamp ||
+      (viewMode === "historical"
         ? new Date(
             Math.min(Date.parse(reference + "T23:59:59.999+08:00"), Date.now()),
           ).toISOString()
-        : now(),
+        : now()),
     snaps = await rows(
       "SELECT * FROM fundamental_snapshots WHERE dataset=ANY($1) AND received_at<=$2 ORDER BY id DESC",
       [Object.keys(DATASETS), receipt],

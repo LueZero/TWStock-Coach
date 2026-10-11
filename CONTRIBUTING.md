@@ -4,7 +4,7 @@
 
 ## 開發環境
 
-在根目錄執行 `npm ci`、`npm run setup`、`docker compose up -d --build`，再執行 `npm run dev`。前端位於5173，API位於8000；詳細設定見README與部署文件。
+在根目錄執行 `npm ci`、`npm run setup`、`docker compose up -d --build`，再執行 `npm run dev`。前端位於5173，API位於8000；詳細設定見 [README](README.md) 與 [架構設計](docs/DESIGN.md#部署與維護)。
 
 ## 提交檢查
 

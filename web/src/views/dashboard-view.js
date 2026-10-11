@@ -920,6 +920,52 @@ function plot() {
   $("chartDescription").textContent = intraday
     ? `${rows[0].trade_date} · ${rows.length} 個公開快照觀測點，開始查看前的走勢不補造。`
     : `${rows[0].trade_date} 至 ${rows.at(-1).trade_date} · 顯示 ${rows.length}／${allRows.length} 根 ${periodLabel()} K · 均線只用完成 K 線計算。`;
+  const report = state.assistantOverlay;
+  if (
+    !intraday &&
+    state.resolution === "1d" &&
+    $("priceBasis").value === "raw" &&
+    report?.meta.market === state.stock.market &&
+    report.meta.symbol === state.stock.symbol
+  ) {
+    const references = new Map(report.chart_bars.map((b) => [b.trade_date, b]));
+    const overlap = rows.filter((b) => references.has(b.trade_date));
+    const matched =
+      overlap.length &&
+      overlap.every((b) => {
+        const r = references.get(b.trade_date);
+        return b.id === r.id && b.revision === r.revision;
+      });
+    if (matched) {
+      for (const s of report.scenarios)
+        for (const [k, label, color] of [
+          ["trigger", "觀察觸發", "#e3bc65"],
+          ["stop", "條件失效", "#66d2af"],
+          ["target", "目標觀察", "#f38c9d"],
+        ]) {
+          if (s[k] < low || s[k] > high) continue;
+          svg.append(
+            svgNode("line", {
+              x1: left,
+              x2: right,
+              y1: y(s[k]),
+              y2: y(s[k]),
+              stroke: color,
+              "stroke-dasharray": "8 5",
+              "data-report-level": k,
+            }),
+          );
+          svgText(svg, `${label} ${fmt(s[k])}`, right - 5, y(s[k]) - 5, {
+            fill: color,
+            "text-anchor": "end",
+          });
+        }
+      $("chartDescription").textContent +=
+        ` · 報告 ${report.meta.data_date} 的固定條件線（非成交訊號，超出視窗價域的線不顯示）。`;
+    } else
+      $("chartDescription").textContent +=
+        " · 報告資料版本或日期不同，條件線已隱藏；請回報告K線核對。";
+  }
 }
 
 function maValue(row, period) {

@@ -268,6 +268,73 @@
   line-height: 1.7;
   min-height: 24px;
 }
+.assistant-progress {
+  border: 1px solid #34647c;
+  border-radius: 11px;
+  padding: 14px 18px;
+  margin: 12px 0 18px;
+  background: #102738;
+  color: #d8eef8;
+}
+.assistant-progress[hidden] {
+  display: none;
+}
+.assistant-progress-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.assistant-progress-heading strong {
+  font-size: 17px;
+}
+.assistant-progress-heading span {
+  font-size: 13px;
+  color: #a8cee1;
+}
+.assistant-progress[data-running="true"]
+  .assistant-progress-heading
+  strong::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #31576b;
+  border-top-color: #7be0f3;
+  border-radius: 50%;
+  margin-right: 9px;
+  animation: assistant-progress-spin 1s linear infinite;
+}
+.assistant-progress p {
+  font-size: 15px;
+  margin: 10px 0;
+  line-height: 1.7;
+}
+.assistant-progress summary {
+  cursor: pointer;
+  color: #9ccce1;
+  font-size: 13px;
+}
+.assistant-progress ol {
+  max-height: 180px;
+  overflow: auto;
+  padding-left: 22px;
+  line-height: 1.9;
+  font-size: 13px;
+  color: #bcd5e4;
+}
+@keyframes assistant-progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-progress[data-running="true"]
+    .assistant-progress-heading
+    strong::before {
+    animation: none;
+  }
+}
 .assistant-login {
   display: flex;
   gap: 12px;

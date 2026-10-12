@@ -61,6 +61,8 @@ Agent 是常駐 Node.js 橋接服務；Codex CLI 僅在分析或追問時啟動�
 | web/src/models、views、controllers                                | 前端狀態、DOM／SVG呈現、互動與請求取消                   |
 | web/src/views/orderbook-view.js                                   | 個股與期貨共用五檔、深度色帶、缺值與委託合計             |
 
+Agent以GET /api/assistant/reports/:id/events提供SSE進度。Codex --json事件先轉成有限的活動資訊，不轉送推理、提示詞或原始工具資料；正式結果經驗證後才保存。SSE重連可續接，活躍報告由記憶體提供即時狀態，階段及終態隨檔案保存。每10秒發送心跳，代理須關閉回應緩衝；完成、取消、失敗及服務關閉時清理連線。
+
 ## AI 工具邊界
 
 每次 CLI 啟動建立暫存研究工作目錄，複製 `AGENTS.md`，並透過執行參數註冊唯一的 `stock` stdio MCP。工具不接受任意 URL、SQL、股票代號或截止時間；自動模式可傳start選擇截止前一年內起日，手動模式禁止更改起日，股票與截止由服務注入，API 位址由 `ASSISTANT_STOCK_API_URL` 管理。工具僅使用既有研究資料、財務與籌碼查詢功能，不暴露匯入、擷取排程、下單或任意命令。MCP 程序隨 CLI 的 stdin 關閉停止。
@@ -117,7 +119,7 @@ API根路徑回傳服務名稱、版本及文件／健康路徑的JSON。工作�
 
 目前 AI 報告使用本機獨立 `agent` 服務，不需 Agent 容器。先執行 `npm run assistant:setup` 產生平台存取密碼，以 ChatGPT 訂閱登入本機 Codex，再執行 `npm run assistant:start`。服務在 8010，報告保存至 `./reports`，CLI 認證及 session 使用本機 `CODEX_HOME`。登入及啟動流程見下方「AI Agent 啟動」。
 
-前端代理須優先把`/api/assistant`送到`http://127.0.0.1:8010`，其他`/api`送到股票API的8000。Nginx可使用`location /api/assistant/ { proxy_pass http://127.0.0.1:8010; }`並保留既有股票代理。備份須包含 reports 及本機受保護的 CLI 認證／會話目錄；股票資料庫備份不包含新報告。助手密碼、認證、報告及持倉檔案不能公開。
+前端代理須優先把`/api/assistant`送到`http://127.0.0.1:8010`，其他`/api`送到股票API的8000。Nginx可使用`location /api/assistant/ { proxy_pass http://127.0.0.1:8010; proxy_buffering off; proxy_read_timeout 420s; }`並保留既有股票代理。備份須包含 reports 及本機受保護的 CLI 認證／會話目錄；股票資料庫備份不包含新報告。助手密碼、認證、報告及持倉檔案不能公開。
 
 `npm run setup` 建立本機 .env；Compose 自動提供資料庫連線，不需將密碼印出。Docker使用package-lock.json與固定Node.js映像digest，只安裝後端正式依賴，不建置或提供前端。Compose預設postgres、api、scheduler三個股票服務：
 

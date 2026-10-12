@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { explanationSchema } from "./report-schema.js";
 import { prepareReportInput } from "./report-input.js";
 import { resolveCodexBinary } from "./codex-binary.js";
+import { dataActivity, cliActivity } from "./progress.js";
 const execute = promisify(execFile);
 const reportTemplate = await readFile(
   new URL("./templates/report-template.md", import.meta.url),
@@ -94,6 +95,7 @@ export async function runCodex(
     signal,
     binary = process.env.CODEX_BIN || "codex",
     onPrepared = async () => {},
+    onProgress = () => {},
   } = {},
 ) {
   binary = resolveCodexBinary(binary);
@@ -104,6 +106,7 @@ export async function runCodex(
     const contextPath = join(directory, "tool-context.json"),
       auditPath = join(directory, "tool-audit.jsonl");
     const meta = job.report.meta;
+    onProgress({ phase: "refreshing", message: "正在確認並更新最近行情" });
     if (meta.mode === "latest") {
       const base =
         process.env.ASSISTANT_STOCK_API_URL || "http://127.0.0.1:8000";
@@ -162,6 +165,7 @@ export async function runCodex(
         await appendFile(auditPath, JSON.stringify(event) + "\n", {
           mode: 0o600,
         });
+        onProgress(dataActivity(event));
       },
     });
     if (signal?.aborted) throw Error("工作已取消");
@@ -177,6 +181,10 @@ export async function runCodex(
       prompt,
       template_version: PROMPT_VERSION,
       prepared_at: new Date().toISOString(),
+    });
+    onProgress({
+      phase: "starting",
+      message: `已整理 ${prepared.packet.manifest.length} 個區塊，正在啟動Codex`,
     });
     await writeFile(
       contextPath,
@@ -278,6 +286,8 @@ export async function runCodex(
           buffer = buffer.slice(newline + 1);
           try {
             const event = JSON.parse(line);
+            const activity = cliActivity(event);
+            if (activity) onProgress(activity);
             if (event.type === "thread.started") threadId = event.thread_id;
             if (
               ["command_execution", "web_search", "file_change"].includes(

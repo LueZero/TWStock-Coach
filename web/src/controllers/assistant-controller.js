@@ -3,6 +3,14 @@ import { selectSection } from "./analysis-controller.js";
 import { restartHistory } from "./dashboard-controller.js";
 import { plot } from "../views/dashboard-view.js";
 import {
+  closeProgressStream,
+  resetProgress,
+  progressEvent,
+  watchProgress,
+  beginProgress,
+  failProgress,
+} from "./assistant-stream.js";
+import {
   renderAssistantReport,
   renderMessages,
   element,
@@ -18,6 +26,21 @@ let report = null,
   selected = null,
   messages = [];
 const key = () => stockKey();
+function watch(id, v, stock) {
+  clearTimeout(pollTimer);
+  status("分析已啟動，執行進度會即時更新；完成後自動保存報告。");
+  watchProgress(id, {
+    current: () => v === version && stock === key(),
+    onDone: () => {
+      finishJob();
+      poll(id, v, stock);
+    },
+    onFallback: () => {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(() => poll(id, v, stock), 3000);
+    },
+  });
+}
 async function api(path, body) {
   const response = await fetch("/api/assistant" + path, {
     ...(body !== undefined
@@ -95,6 +118,11 @@ async function checkService() {
       : "平台條件模式";
     controls();
     if (!busy) status(data.note);
+    if (data.active_report && !busy && !report) {
+      const doc = await api("/reports/" + data.active_report);
+      if (doc.report.meta.market + ":" + doc.report.meta.symbol === key())
+        await loadReport(data.active_report);
+    }
     return data;
   } catch (error) {
     status(error.message);
@@ -126,6 +154,7 @@ async function history() {
   }
 }
 async function loadReport(id) {
+  closeProgressStream();
   const v = ++version,
     stock = key();
   clearTimeout(pollTimer);
@@ -140,6 +169,7 @@ async function loadReport(id) {
     report = data.report;
     selected = null;
     messages = data.messages;
+    resetProgress(data.progress_events, data.run);
     tab = "summary";
     render();
     renderMessages(messages, report?.evidence);
@@ -162,7 +192,7 @@ async function loadReport(id) {
     syncRangeControls();
     if (data.run?.status === "running") {
       jobId = data.report.id;
-      poll(jobId, v, stock);
+      watch(jobId, v, stock);
     }
   } catch (error) {
     if (v === version) status(error.message);
@@ -202,6 +232,8 @@ function request(message) {
   return body;
 }
 function finishJob() {
+  closeProgressStream();
+  clearTimeout(pollTimer);
   busy = false;
   jobId = null;
   controls();
@@ -212,10 +244,12 @@ async function poll(id, v, stock) {
     const job = value.run;
     if (v !== version || stock !== key()) return;
     if (job.status === "running") {
+      for (const event of value.progress_events || []) progressEvent(event);
       status(
-        job.phase === "analyzing"
-          ? "資料與缺漏已整理，AI正在核對各面向與進出場條件；完整報告可能需要數分鐘，完成後自動保存。"
-          : "正在整理這檔股票的平台資料，接著交給AI分析。",
+        value.progress_events?.at(-1)?.message ||
+          (job.phase === "analyzing"
+            ? "資料與缺漏已整理，AI正在核對各面向與進出場條件；完整報告可能需要數分鐘，完成後自動保存。"
+            : "正在整理這檔股票的平台資料，接著交給AI分析。"),
       );
       pollTimer = setTimeout(() => poll(id, v, stock), 2000);
       return;
@@ -226,7 +260,7 @@ async function poll(id, v, stock) {
       messages = value.messages;
       render();
       renderMessages(messages, report?.evidence);
-      status("AI回答已驗證；追問沿用本份資料。要看最新行情請產生新報告。");
+      status("AI回答已驗證並保存；追問會重新核對本次截止內資料。");
     } else
       status(
         job.error ||
@@ -235,9 +269,16 @@ async function poll(id, v, stock) {
             : "分析中斷，原報告保留，可重新送出。"),
       );
     finishJob();
+    resetProgress(value.progress_events, value.run);
     await history();
   } catch (error) {
     if (v !== version || stock !== key()) return;
+    if (!jobId) {
+      status(
+        `工作已結束，但報告讀取失敗：${error.message}；可從已存報告重試。`,
+      );
+      return;
+    }
     status(
       `連線中斷：${error.message}；工作可能仍在執行，稍後讀取報告或取消。`,
     );
@@ -260,6 +301,7 @@ async function generate(
   busy = true;
   controls();
   status("正在更新最近行情，再固定資料截止並整理分析資訊…");
+  beginProgress();
   try {
     const packetResponse = await fetch("/api/research/report-input", {
       method: "POST",
@@ -272,6 +314,7 @@ async function generate(
     if (v !== version || stock !== key()) return;
     const data = await api("/reports", { ...packet, message });
     if (v !== version || stock !== key()) return;
+    resetProgress([], data.run);
     report = data.report;
     selected = null;
     tab = "summary";
@@ -283,7 +326,7 @@ async function generate(
     if (data.status === "running") {
       jobId = data.report.id;
       controls();
-      poll(jobId, v, stock);
+      watch(jobId, v, stock);
     } else {
       finishJob();
       status(
@@ -294,6 +337,7 @@ async function generate(
     if (v === version) {
       status(error.message);
       finishJob();
+      failProgress(error.message);
     }
   }
 }
@@ -308,8 +352,10 @@ async function send() {
     stock = key();
   busy = true;
   controls();
+  beginProgress();
   try {
     const data = await api(`/reports/${report.id}/messages`, { message });
+    resetProgress([], data.run);
     if (v !== version || stock !== key()) return;
     messages.push({ role: "user", content: { text: message } });
     renderMessages(messages, report?.evidence);
@@ -317,7 +363,7 @@ async function send() {
     if (data.status === "running") {
       jobId = data.report_id;
       controls();
-      poll(jobId, v, stock);
+      watch(jobId, v, stock);
     } else {
       finishJob();
       status("Codex尚未連線，訊息已保存；平台報告仍可查看。");
@@ -326,6 +372,7 @@ async function send() {
     if (v === version) {
       status(error.message);
       finishJob();
+      failProgress(error.message);
     }
   }
 }
@@ -387,6 +434,7 @@ export function initAssistantController() {
   };
   document.addEventListener("stock-coach:stock", () => {
     version++;
+    resetProgress();
     clearTimeout(pollTimer);
     report = null;
     selected = null;

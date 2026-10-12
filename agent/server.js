@@ -26,6 +26,28 @@ export function createAgent({
   const app = Fastify({ bodyLimit: 2 * 1024 * 1024, logger: false });
   const store = createReportStore(directory);
   let active = null;
+  const subscribers = new Map();
+  function publish(doc, activity) {
+    const events = (doc.progress_events ||= []);
+    const last = events.at(-1);
+    if (
+      last &&
+      last.phase === activity.phase &&
+      last.message === activity.message &&
+      last.tool === activity.tool
+    )
+      return;
+    const event = {
+      id: (events.at(-1)?.id || 0) + 1,
+      at: new Date().toISOString(),
+      ...activity,
+    };
+    events.push(event);
+    if (events.length > 300) events.shift();
+    doc.run.phase = activity.phase;
+    for (const send of subscribers.get(doc.report.id) || [])
+      send("progress", event);
+  }
   const origins = (
     process.env.ASSISTANT_ALLOWED_ORIGINS ||
     "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:4173,http://localhost:4173"
@@ -118,6 +140,7 @@ export function createAgent({
     return value.trim();
   };
   async function load(id) {
+    if (active?.id === id && active.doc) return active.doc;
     const doc = await store.load(id);
     if (doc.run.status === "running" && active?.id !== id) {
       doc.run = {
@@ -132,7 +155,15 @@ export function createAgent({
   async function execute(doc, text, kind, service) {
     const controller = new AbortController(),
       id = doc.report.id;
-    active = { id, controller };
+    active = { id, controller, doc };
+    doc.run.started_at = new Date().toISOString();
+    publish(doc, {
+      phase: "preparing",
+      message:
+        kind === "report"
+          ? "分析已開始，正在準備資料"
+          : "追問已開始，正在更新本次資料",
+    });
     try {
       const response = await run(
         {
@@ -143,6 +174,7 @@ export function createAgent({
         },
         {
           signal: controller.signal,
+          onProgress: (activity) => publish(doc, activity),
           onPrepared: async (prepared) => {
             doc.analysis_inputs = [...(doc.analysis_inputs || []), prepared];
             doc.report.input_manifest = prepared.manifest;
@@ -214,6 +246,7 @@ export function createAgent({
         };
       doc.run = {
         status: "completed",
+        started_at: doc.run.started_at,
         kind,
         usage: response.usage,
         finished_at: new Date().toISOString(),
@@ -224,19 +257,32 @@ export function createAgent({
         doc.tool_calls = [...(doc.tool_calls || []), ...e.tool_calls];
       doc.run = {
         status: controller.signal.aborted ? "cancelled" : "failed",
+        started_at: doc.run.started_at,
         kind,
         error: e.message,
         finished_at: new Date().toISOString(),
       };
     }
     try {
+      publish(doc, {
+        phase: doc.run.status,
+        message:
+          doc.run.status === "completed"
+            ? "報告已通過驗證"
+            : doc.run.error || "分析已停止",
+      });
       await store.save(doc);
     } catch (e) {
       console.error(
         "Agent：無法保存報告；請檢查reports目錄權限與空間。",
         e.code || "unknown",
       );
+      doc.run.status = "failed";
+      doc.run.error = "報告保存失敗，請檢查reports目錄權限與空間。";
+      publish(doc, { phase: "failed", message: doc.run.error });
     } finally {
+      for (const send of subscribers.get(id) || [])
+        send("done", { status: doc.run.status });
       if (active?.id === id) active = null;
     }
   }
@@ -296,9 +342,11 @@ export function createAgent({
     }
     if (service.ready) void execute(doc, text, "report", service);
     else active = null;
-    return reply
-      .code(202)
-      .send({ report, status: service.ready ? "running" : "unavailable" });
+    return reply.code(202).send({
+      report,
+      status: service.ready ? "running" : "unavailable",
+      run: doc.run,
+    });
   });
   app.get("/api/assistant/reports/:id", async (request) => {
     authorized(request);
@@ -307,6 +355,7 @@ export function createAgent({
       report: doc.report,
       messages: doc.messages,
       run: doc.run,
+      progress_events: doc.progress_events || [],
       session_id: doc.session_id,
       tool_calls: doc.tool_calls || [],
       analysis_inputs: (doc.analysis_inputs || []).map(
@@ -318,6 +367,57 @@ export function createAgent({
         }),
       ),
     };
+  });
+  app.get("/api/assistant/reports/:id/events", async (request, reply) => {
+    authorized(request);
+    const id = validateId(request.params.id),
+      doc = active?.id === id && active.doc ? active.doc : await load(id);
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    reply.raw.write("retry: 2000\n\n");
+    let timer;
+    const send = (type, data) => {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(
+        `${type === "progress" ? `id: ${data.id}\n` : ""}event: ${type}\ndata: ${JSON.stringify(data)}\n\n`,
+      );
+      if (type === "done") reply.raw.end();
+    };
+    const listeners = subscribers.get(id) || new Set();
+    subscribers.set(id, listeners);
+    listeners.add(send);
+    const cleanup = () => {
+      clearInterval(timer);
+      listeners.delete(send);
+      if (!listeners.size) subscribers.delete(id);
+    };
+    reply.raw.on("close", cleanup);
+    const since = Number(request.headers["last-event-id"] || 0);
+    for (const event of doc.progress_events || [])
+      if (event.id > since) send("progress", event);
+    send("heartbeat", {
+      at: new Date().toISOString(),
+      started_at: doc.run.started_at,
+      status: doc.run.status,
+    });
+    if (doc.run.status !== "running") {
+      send("done", { status: doc.run.status });
+      return;
+    }
+    timer = setInterval(
+      () =>
+        send("heartbeat", {
+          at: new Date().toISOString(),
+          started_at: doc.run.started_at,
+          status: doc.run.status,
+        }),
+      10000,
+    );
   });
   app.get("/api/assistant/reports/:id/download", async (request, reply) => {
     authorized(request);
@@ -358,6 +458,7 @@ export function createAgent({
       return reply.code(202).send({
         status: service.ready ? "running" : "unavailable",
         report_id: doc.report.id,
+        run: doc.run,
       });
     },
   );
@@ -370,8 +471,11 @@ export function createAgent({
     }
     return { status: "unchanged" };
   });
-  app.addHook("onClose", async () => {
+  app.addHook("preClose", async () => {
     active?.controller.abort();
+    for (const listeners of subscribers.values())
+      for (const send of [...listeners])
+        send("done", { status: "interrupted" });
   });
   return app;
 }

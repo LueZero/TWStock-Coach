@@ -1309,6 +1309,25 @@
               >
                 正在確認助手服務…
               </p>
+              <section
+                id="assistantProgress"
+                class="assistant-progress"
+                hidden
+                aria-label="AI分析執行狀態"
+              >
+                <div class="assistant-progress-heading">
+                  <strong id="assistantProgressStage">準備分析</strong
+                  ><span id="assistantProgressConnection">連線中</span
+                  ><span id="assistantProgressTime">已執行 0 秒</span>
+                </div>
+                <p id="assistantProgressLatest" aria-live="polite">
+                  等待分析開始
+                </p>
+                <details>
+                  <summary>查看執行活動</summary>
+                  <ol id="assistantProgressEvents"></ol>
+                </details>
+              </section>
               <form id="assistantLogin" class="assistant-login">
                 <label
                   >平台存取密碼<input

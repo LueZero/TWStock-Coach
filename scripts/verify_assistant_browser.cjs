@@ -62,8 +62,8 @@ async function evaluate(expression) {
     );
   return response.result.value;
 }
-async function until(expression) {
-  const deadline = Date.now() + 60000;
+async function until(expression, timeout = 60000) {
+  const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (await evaluate(expression)) return;
     await pause(300);
@@ -192,6 +192,20 @@ async function until(expression) {
       `document.getElementById('assistantContent').textContent.includes('AI 重點摘要')`,
     );
     if (saved.structured) {
+      if (saved.streamed) {
+        await until(
+          `!document.getElementById('assistantProgress').hidden && document.getElementById('assistantProgressEvents').children.length>0`,
+        );
+        assert.ok(
+          await evaluate(
+            `document.getElementById('assistantProgressConnection').textContent.length>0`,
+          ),
+        );
+      }
+      await until(
+        `document.querySelectorAll('.assistant-research-card').length===7`,
+        240000,
+      );
       assert.equal(
         await evaluate(
           `document.querySelectorAll('.assistant-research-card').length`,

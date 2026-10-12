@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { calculate } from "../api/indicators.js";
+import { calculateTrade } from "./trade-math.js";
 
 export const sections = [
   "overview",
@@ -13,6 +14,21 @@ export const sections = [
   "scenarios",
 ];
 export const toolDefinitions = [
+  {
+    name: "calculate_trade_profit",
+    description:
+      "依本次股票實際K線或均線價格與使用者明示股數計算每股價差及毛損益。買賣價格只接受本次資料值（四捨五入兩位），股數必須由使用者問題提供。一張等於1000股。未提供費用不計算淨利；結果不是預測或保證。報告提及價差或損益金額前必須呼叫此工具並引用證據ID。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        buy_price: { type: "number", minimum: 0.01, maximum: 1000000 },
+        sell_price: { type: "number", minimum: 0.01, maximum: 1000000 },
+        shares: { type: "integer", minimum: 1, maximum: 100000000 },
+      },
+      required: ["buy_price", "sell_price", "shares"],
+      additionalProperties: false,
+    },
+  },
   {
     name: "get_stock_data",
     description:
@@ -188,8 +204,10 @@ export function createStockTools(
     for (const [key, value] of Object.entries(args)) {
       const spec = definition.inputSchema.properties[key];
       if (
-        spec.type === "integer"
-          ? !Number.isInteger(value) ||
+        ["integer", "number"].includes(spec.type)
+          ? (spec.type === "integer"
+              ? !Number.isInteger(value)
+              : !Number.isFinite(value)) ||
             value < spec.minimum ||
             value > spec.maximum
           : typeof value !== "string" ||
@@ -245,7 +263,15 @@ export function createStockTools(
       category,
       endpoint;
     try {
-      if (name === "get_stock_data") {
+      if (name === "calculate_trade_profit") {
+        category = "calculation";
+        endpoint = "local:calculate_trade_profit";
+        data = calculateTrade(
+          args,
+          await snapshot(),
+          context.user_message || "",
+        );
+      } else if (name === "get_stock_data") {
         const { input, report } = await snapshot();
         category = args.section;
         endpoint = "/api/research/report-input";

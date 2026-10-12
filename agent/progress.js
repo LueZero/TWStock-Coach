@@ -30,7 +30,11 @@ export function cliActivity(event) {
     const args = event.item.arguments || {},
       label =
         labels[args.section] ||
-        (event.item.tool === "get_financial_history" ? "財務歷史" : "籌碼明細");
+        (event.item.tool === "calculate_trade_profit"
+          ? "價差與毛損益試算"
+          : event.item.tool === "get_financial_history"
+            ? "財務歷史"
+            : "籌碼明細");
     return {
       phase: "querying",
       message: `AI${event.type === "item.started" ? "正在補查" : "已完成補查"}：${label}${/^\d{4}-\d{2}-\d{2}$/.test(args.start || "") ? `（${args.start}起）` : ""}`,

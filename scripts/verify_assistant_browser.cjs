@@ -185,6 +185,21 @@ async function until(expression, timeout = 60000) {
     await until(
       `document.getElementById('assistantLogin').hidden && document.getElementById('assistantHistory').options.length>1`,
     );
+    if (saved.failed_report_id) {
+      await evaluate(
+        `document.getElementById('assistantHistory').value=${JSON.stringify(saved.failed_report_id)};document.getElementById('assistantHistory').dispatchEvent(new Event('change'))`,
+      );
+      await until(
+        `document.getElementById('assistantContent').textContent.includes('本次分析未完成')`,
+      );
+      assert.ok(
+        !(
+          await evaluate(
+            `document.getElementById('assistantContent').textContent`,
+          )
+        ).includes("正在整理資料與產生AI摘要"),
+      );
+    }
     await evaluate(
       `document.getElementById('assistantHistory').value=${JSON.stringify(saved.report_id)};document.getElementById('assistantHistory').dispatchEvent(new Event('change'))`,
     );

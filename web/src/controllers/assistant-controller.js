@@ -25,6 +25,7 @@ let report = null,
   authenticated = false,
   selected = null,
   messages = [];
+let reportRun = null;
 const key = () => stockKey();
 function watch(id, v, stock) {
   clearTimeout(pollTimer);
@@ -73,6 +74,7 @@ function controls() {
 }
 function render() {
   renderAssistantReport(report, tab, {
+    run: reportRun,
     tab: (value) => {
       tab = value;
       render();
@@ -167,6 +169,7 @@ async function loadReport(id) {
     if (data.report.meta.market + ":" + data.report.meta.symbol !== stock)
       throw Error("報告股票與目前選取不符");
     report = data.report;
+    reportRun = data.run;
     selected = null;
     messages = data.messages;
     resetProgress(data.progress_events, data.run);
@@ -242,6 +245,7 @@ async function poll(id, v, stock) {
   try {
     const value = await api("/reports/" + id);
     const job = value.run;
+    reportRun = job;
     if (v !== version || stock !== key()) return;
     if (job.status === "running") {
       for (const event of value.progress_events || []) progressEvent(event);
@@ -261,13 +265,16 @@ async function poll(id, v, stock) {
       render();
       renderMessages(messages, report?.evidence);
       status("AI回答已驗證並保存；追問會重新核對本次截止內資料。");
-    } else
+    } else {
+      report = value.report;
+      render();
       status(
         job.error ||
           (job.status === "cancelled"
             ? "已取消AI分析；平台條件報告保留。"
             : "分析中斷，原報告保留，可重新送出。"),
       );
+    }
     finishJob();
     resetProgress(value.progress_events, value.run);
     await history();
@@ -316,6 +323,7 @@ async function generate(
     if (v !== version || stock !== key()) return;
     resetProgress([], data.run);
     report = data.report;
+    reportRun = data.run;
     selected = null;
     tab = "summary";
     messages = [{ role: "user", content: { text: message } }];

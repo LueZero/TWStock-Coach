@@ -243,3 +243,7 @@ scripts/setup_env.js 與 setup_assistant.js 是環境設定工具；verify_* 是
 ### 舊助手資料遷移
 
 全新安裝不需執行。舊資料庫版本升級前，先停止舊 AI worker，備份資料庫並使用 scripts/export_legacy_reports.js 轉存報告。確認 Markdown／JSON、原始輸入與對話後，scripts/remove_legacy_assistant_tables.js 才核對並移除六張已廢棄助手表；股票資料表保留。兩個工具需要有效資料庫連線及 agent/report-store.js，不屬於服務啟動流程，也不應在新環境例行執行。
+
+### AI 價差與損益驗證
+
+`calculate_trade_profit`是本地唯讀MCP工具，使用decimal.js核算（賣價－買價）×股數。價格限定本次股票K線或價格指標（四捨五入兩位），股數限定本次使用者明示張／股，不接受AI任意價格或預設部位。計算回應和工具證據沿用本次截止與查詢稽核；損益文字只有引用成功計算才進入報告。未提供費用不計算淨利。價位驗證識別「負0.23元」、全形負號及「毛損失1400元」的負數語意；失敗時保留validation_failure供本機JSON診斷，但未驗證草稿不當作正式AI結論。前端終止狀態明示失敗／取消／中斷，不繼續顯示整理中。

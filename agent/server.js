@@ -25,7 +25,8 @@ export function createAgent({
 } = {}) {
   const app = Fastify({ bodyLimit: 2 * 1024 * 1024, logger: false });
   const store = createReportStore(directory);
-  let active = null;
+  let active = null,
+    executionTask = null;
   const subscribers = new Map();
   function publish(doc, activity) {
     const events = (doc.progress_events ||= []);
@@ -221,7 +222,19 @@ export function createAgent({
             query_windows: fresh.map((c) => ({ start: c.start, end: c.end })),
           }
         : doc.report;
-      const result = validateExplanation(response.result, validationReport);
+      let result;
+      try {
+        result = validateExplanation(response.result, validationReport);
+      } catch (error) {
+        // Keep rejected output for local diagnosis; never present it as a report.
+        doc.validation_failure = {
+          at: new Date().toISOString(),
+          error: error.message,
+          detail: error.validation_detail || null,
+          rejected_output: response.result,
+        };
+        throw error;
+      }
       doc.session_id = response.session_id || doc.session_id || null;
       const content = {
         ...result,
@@ -340,7 +353,7 @@ export function createAgent({
       active = null;
       throw e;
     }
-    if (service.ready) void execute(doc, text, "report", service);
+    if (service.ready) executionTask = execute(doc, text, "report", service);
     else active = null;
     return reply.code(202).send({
       report,
@@ -453,7 +466,8 @@ export function createAgent({
         active = null;
         throw e;
       }
-      if (service.ready) void execute(doc, text, doc.run.kind, service);
+      if (service.ready)
+        executionTask = execute(doc, text, doc.run.kind, service);
       else active = null;
       return reply.code(202).send({
         status: service.ready ? "running" : "unavailable",
@@ -476,6 +490,7 @@ export function createAgent({
     for (const listeners of subscribers.values())
       for (const send of [...listeners])
         send("done", { status: "interrupted" });
+    await executionTask;
   });
   return app;
 }

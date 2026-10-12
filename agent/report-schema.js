@@ -274,8 +274,14 @@ export function validateExplanation(value, report) {
     );
     if (/保證.{0,6}(獲利|賺|上漲)|勝率\s*\d|獲利機率\s*\d/.test(assertions))
       throw Error("AI回覆含未驗證獲利承諾");
-    for (const m of s.matchAll(
-      /(?:NT\$|新台幣|價格|價位|停損|停利|目標價|支撐|壓力)\s*[：:為在約]?\s*([-−﹣＋+]?[\d,]+(?:\.\d+)?)\s*(?:元)?|([-−﹣＋+]?[\d,]+(?:\.\d+)?)\s*元/g,
+    // Financial prose commonly expresses a negative result as 「毛損失1400元」.
+    // Normalize explicit loss wording, without changing stop prices or EPS signs.
+    const amounts = s.replace(
+      /((?:毛損失|毛虧損|虧損|損失)\s*)(\d[\d,]*(?:\.\d+)?)\s*元/g,
+      "$1負$2元",
+    );
+    for (const m of amounts.matchAll(
+      /(?:NT\$|新台幣|價格|價位|停損|停利|目標價|支撐|壓力)\s*[：:為在約]?\s*([-−﹣－＋+負]?[\d,]+(?:\.\d+)?)\s*(?:元)?|([-−﹣－＋+負]?[\d,]+(?:\.\d+)?)\s*元/g,
     ))
       if (
         !allowed.has(
@@ -285,12 +291,17 @@ export function validateExplanation(value, report) {
                 .replaceAll(",", "")
                 .replaceAll("−", "-")
                 .replaceAll("﹣", "-")
+                .replaceAll("－", "-")
+                .replaceAll("負", "-")
                 .replaceAll("＋", "+"),
             ),
           ),
         )
       )
-        throw Error("AI回覆含非平台計算價位");
+        throw Object.assign(
+          Error(`AI回覆含非平台計算價位或金額：${m[0]}；損益需先使用試算工具`),
+          { validation_detail: { assertion: m[0] } },
+        );
   }
   return value;
 }

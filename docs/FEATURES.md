@@ -373,7 +373,7 @@ CLI session內容保存在該執行環境的CODEX_HOME；report.json的session I
 
 K 線引導顯示 MA5／20／60、原價日K與候選價位，新增完成觀測上的均線轉多／空排列及 MACD 黃金／死亡交叉標記。游標或鍵盤聚焦顯示當日 OHLC、均線結構與事件；事件清單可展開。標記只使用當日與前一筆完成觀測，不標成已成交買賣點。
 
-`agent/AGENTS.md` 是共同指令入口，`agent/templates/report-template.md` 定義AI摘要與完整報告格式；專案skills與讀取技能工具已移除。Agent依分析起日至截止先整理基本、技術、財務、籌碼、同業、新聞、大盤和技術價位參考，將實際數值、來源與缺漏一併提交，不依賴模型自行決定是否讀取某面向。保留 get_stock_data／get_financial_history／get_chip_detail，供Codex補查細節。提交資料不因分頁省略，已取得新聞與同業資料也不固定截取40則或7家；這不代表來源完整。JSON的 analysis_inputs 保存實際提交的提示與資料包，tool_calls 區分 prepared_input 的預先準備與模型補查。
+`agent/AGENTS.md` 是共同指令入口，`agent/templates/report-template.md` 定義AI摘要與完整報告格式；專案skills與讀取技能工具已移除。Agent依分析起日至截止先整理基本、技術、財務、籌碼、同業、新聞、大盤和技術價位參考，將實際數值、來源與缺漏一併提交，不依賴模型自行決定是否讀取某面向。保留 get_stock_data／get_financial_history／get_chip_detail，供Codex補查細節。calculate_trade_profit供Codex依本次K線／均線價格與使用者明示股數核算價差、毛利及虧損；一張換算1000股。未提供費用不推定折扣、稅率或淨利；獲利目標不當作可達成價格預測。提交資料不因分頁省略，已取得新聞與同業資料也不固定截取40則或7家；這不代表來源完整。JSON的 analysis_inputs 保存實際提交的提示與資料包，tool_calls 區分 prepared_input 的預先準備與模型補查。
 
 API 不再以 `sectorProfile` 將公司分成金融／一般類並注入固定分析或缺資料文字。公司產業維持資料庫原值；財務回傳 `financial:coverage`，列出本次來源狀態、接收時間、修訂及指標可用性。查詢失敗與指標空值分開呈現，財務面向有資料與否依所有非空指標判斷。產業分析由報告模板引導，AI 依工具證據判讀；工具未提供的指標不等同來源未接入。
 

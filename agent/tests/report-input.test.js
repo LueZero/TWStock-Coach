@@ -191,7 +191,12 @@ test("報告不注入本金、風險、費用與持倉；保留技術價位條�
 test("補查僅保留資料工具，預先準備中取消會停止查詢", async () => {
   assert.deepEqual(
     toolDefinitions.map((t) => t.name),
-    ["get_stock_data", "get_financial_history", "get_chip_detail"],
+    [
+      "calculate_trade_profit",
+      "get_stock_data",
+      "get_financial_history",
+      "get_chip_detail",
+    ],
   );
   const controller = new AbortController();
   controller.abort();

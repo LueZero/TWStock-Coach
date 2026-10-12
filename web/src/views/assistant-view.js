@@ -217,6 +217,15 @@ export function renderMessages(messages = [], evidence = []) {
   target.scrollTop = target.scrollHeight;
 }
 export function renderAssistantReport(report, tab, actions) {
+  const stopped = [
+    "failed",
+    "cancelled",
+    "interrupted",
+    "unavailable",
+  ].includes(actions.run?.status);
+  const pending = stopped
+    ? `本次分析未完成：${actions.run.error || "執行已停止"}。可重新產生報告；尚無通過驗證的AI結論。`
+    : "正在整理資料與產生AI摘要，完成後顯示分析結論。";
   document
     .querySelectorAll("[data-report-tab]")
     .forEach((b) =>
@@ -235,7 +244,7 @@ export function renderAssistantReport(report, tab, actions) {
     return;
   }
   $("assistantMeta").textContent =
-    `${report.meta.mode === "historical" ? "當時可得資料" : "報告建立時資料"} · 日K／原始價格 · 行情 ${report.meta.data_date || "不足"} · 截止 ${new Date(report.meta.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })} · ${report.ai ? "AI解讀完成" : "等待AI分析"}`;
+    `${report.meta.mode === "historical" ? "當時可得資料" : "報告建立時資料"} · 日K／原始價格 · 行情 ${report.meta.data_date || "不足"} · 截止 ${new Date(report.meta.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })} · ${report.ai ? "AI解讀完成" : stopped ? "AI分析未完成" : "等待AI分析"}`;
   if (tab === "summary") {
     const hero = element("article", null, "assistant-report-hero");
     hero.append(
@@ -247,7 +256,7 @@ export function renderAssistantReport(report, tab, actions) {
       report.ai?.summary ||
         (report.ai
           ? "此舊版報告未單獨產生AI摘要，請閱讀下方AI解讀。"
-          : "正在整理資料與產生AI摘要，完成後顯示分析結論。"),
+          : pending),
       report.evidence,
     );
     target.append(hero);
@@ -315,7 +324,10 @@ export function renderAssistantReport(report, tab, actions) {
       );
     explain(
       target,
-      report.ai?.answer || "AI尚未完成，這裡不以程式摘要代替分析結論。",
+      report.ai?.answer ||
+        (stopped
+          ? "分析已停止，尚無通過驗證的AI報告。請重新產生報告或送出追問。"
+          : "AI尚未完成，這裡不以程式摘要代替分析結論。"),
       report.evidence,
     );
     if (report.ai)

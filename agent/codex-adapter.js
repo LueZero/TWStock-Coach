@@ -20,7 +20,7 @@ const reportTemplate = await readFile(
   new URL("./templates/report-template.md", import.meta.url),
   "utf8",
 );
-export const PROMPT_VERSION = "stock-report-v7";
+export const PROMPT_VERSION = "stock-report-v8";
 export function codexEnvironment() {
   const allowed = [
     "PATH",
@@ -155,6 +155,7 @@ export async function runCodex(
     if (signal?.aborted) throw Error("工作已取消");
     const context = {
       scope: job.scope,
+      user_message: job.message,
       api_url: process.env.ASSISTANT_STOCK_API_URL || "http://127.0.0.1:8000",
       audit_path: auditPath,
     };

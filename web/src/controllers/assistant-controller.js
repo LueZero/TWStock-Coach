@@ -259,7 +259,7 @@ async function generate(
     stock = key();
   busy = true;
   controls();
-  status("正在固定來源修訂、檢查交易日與計算價位及費稅…");
+  status("正在更新最近行情，再固定資料截止並整理分析資訊…");
   try {
     const packetResponse = await fetch("/api/research/report-input", {
       method: "POST",

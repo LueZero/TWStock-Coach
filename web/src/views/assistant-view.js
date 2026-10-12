@@ -235,7 +235,7 @@ export function renderAssistantReport(report, tab, actions) {
     return;
   }
   $("assistantMeta").textContent =
-    `${report.meta.mode === "historical" ? "當時可得資料" : "最新資料包"} · 日K／原始價格 · 行情 ${report.meta.data_date || "不足"} · 截止 ${new Date(report.meta.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })} · ${report.ai ? "AI解讀完成" : "等待AI分析"}`;
+    `${report.meta.mode === "historical" ? "當時可得資料" : "報告建立時資料"} · 日K／原始價格 · 行情 ${report.meta.data_date || "不足"} · 截止 ${new Date(report.meta.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })} · ${report.ai ? "AI解讀完成" : "等待AI分析"}`;
   if (tab === "summary") {
     const hero = element("article", null, "assistant-report-hero");
     hero.append(

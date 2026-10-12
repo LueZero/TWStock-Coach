@@ -35,6 +35,7 @@ import { forecast } from "./research.js";
 import { contract, protectedPaths } from "./contracts.js";
 import { buildSnapshot } from "./research-packet.js";
 import { buildRuleReport } from "./report-conditions.js";
+import { refreshLatestStock } from "./latest-data.js";
 const choice = (v, values, fallback) => {
     v ??= fallback;
     if (!values.includes(v)) fail("參數不符：" + v);
@@ -574,9 +575,25 @@ export async function createApp({ logger = false } = {}) {
     "/api/research/report-input",
     { bodyLimit: 16384 },
     async (request) => {
+      const body = request.body || {};
+      stock(body.market, body.symbol);
+      const refresh =
+        (body.mode || "latest") === "latest"
+          ? await refreshLatestStock(body.market, body.symbol)
+          : null;
       const input = await buildSnapshot(request.body);
+      if (refresh?.status === "stale")
+        fail(
+          `最新日K尚未就緒：目前 ${refresh.data_date || "無資料"}，預期 ${refresh.expected_day}；更新工作 ${refresh.job_id} ${refresh.provider_status}，請稍後再試。`,
+          503,
+        );
+      if (refresh) input.latest_refresh = refresh;
       return { input, report: buildRuleReport(input) };
     },
   );
+  app.post("/api/research/refresh/:market/:symbol", async (request) => {
+    stock(request.params.market, request.params.symbol);
+    return refreshLatestStock(request.params.market, request.params.symbol);
+  });
   return app;
 }

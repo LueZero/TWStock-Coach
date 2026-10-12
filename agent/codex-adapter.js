@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { explanationSchema } from "./report-schema.js";
 import { prepareReportInput } from "./report-input.js";
+import { resolveCodexBinary } from "./codex-binary.js";
 const execute = promisify(execFile);
 const reportTemplate = await readFile(
   new URL("./templates/report-template.md", import.meta.url),
@@ -49,6 +50,7 @@ export async function codexHealth(
   run = execute,
 ) {
   try {
+    binary = resolveCodexBinary(binary);
     const version = (
       await run(binary, ["--version"], {
         timeout: 10000,
@@ -94,6 +96,7 @@ export async function runCodex(
     onPrepared = async () => {},
   } = {},
 ) {
+  binary = resolveCodexBinary(binary);
   const directory = await mkdtemp(join(tmpdir(), "twstock-ai-"));
   try {
     const schema = join(directory, "schema.json"),
@@ -101,6 +104,29 @@ export async function runCodex(
     const contextPath = join(directory, "tool-context.json"),
       auditPath = join(directory, "tool-audit.jsonl");
     const meta = job.report.meta;
+    if (meta.mode === "latest") {
+      const base =
+        process.env.ASSISTANT_STOCK_API_URL || "http://127.0.0.1:8000";
+      const refresh = await fetch(
+        new URL(`/api/research/refresh/${meta.market}/${meta.symbol}`, base),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+          signal: AbortSignal.any([
+            AbortSignal.timeout(40000),
+            ...(signal ? [signal] : []),
+          ]),
+        },
+      );
+      if (!refresh.ok)
+        throw Error("最新行情更新失敗，請先檢查股票 API 與資料排程");
+      job.latest_refresh = await refresh.json();
+      if (job.latest_refresh.status === "stale")
+        throw Error(
+          `最新日K尚未就緒：目前 ${job.latest_refresh.data_date || "無資料"}，預期 ${job.latest_refresh.expected_day}；請待更新工作 ${job.latest_refresh.job_id} 完成後重試。`,
+        );
+    }
     const asOf =
       meta.mode === "historical" ? meta.as_of : new Date().toISOString();
     const end = new Intl.DateTimeFormat("en-CA", {
@@ -140,6 +166,7 @@ export async function runCodex(
     });
     if (signal?.aborted) throw Error("工作已取消");
     job.prepared_input = prepared.packet;
+    job.prepared_input.latest_refresh = job.latest_refresh || null;
     const prompt = reportPrompt(job);
     if (Buffer.byteLength(prompt) > 350000)
       throw Error("報告資料超過輸入上限，請縮小區間。");

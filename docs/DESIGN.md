@@ -206,7 +206,7 @@ codex login status
 npm run assistant:start
 ```
 
-終端保持開啟，`Ctrl+C` 停止本機 Agent；`docker compose down` 只停止股票容器。若 8010 已有 Agent，不要重複啟動。Node.js 橋接使用 `spawn` 直接啟動 CLI；Windows 的 `CODEX_BIN` 應指向原生 `codex.exe`，不指向 `.cmd` 包裝檔。實測版本為 CLI 0.160.1，版本變更需另驗證參數與 session 接續。
+終端保持開啟，`Ctrl+C` 停止本機 Agent；`docker compose down` 只停止股票容器。若 8010 已有 Agent，不要重複啟動。Node.js 橋接使用 `spawn` 直接啟動 CLI；Windows 的 `CODEX_BIN` 應指向原生 `codex.exe`，不指向 `.cmd` 包裝檔。實測版本為 CLI 0.162.0-alpha.17.2，版本變更需另驗證參數與 session 接續。
 
 在前台使用`.env`的`ASSISTANT_ACCESS_KEY`解鎖；它是個人平台存取密碼，不是OpenAI API Key。agent預設綁`127.0.0.1:8010`。`CODEX_BIN`可指定CLI完整路徑，`ASSISTANT_MODEL`可指定模型，`ASSISTANT_REPORT_DIR`可調整報告目錄。只接受`codex login status`顯示ChatGPT登入，分析強制`forced_login_method="chatgpt"`，子程序不傳入API Key或股票平台密鑰。
 

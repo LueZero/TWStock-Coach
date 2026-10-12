@@ -1,4 +1,14 @@
 import { createHash } from "node:crypto";
+// Try today's official daily source only after the post-close publication window.
+export function dailySourceEnd(stamp = new Date()) {
+  const local = new Date(new Date(stamp).getTime() + 8 * 3600000);
+  return new Date(
+    local.getTime() -
+      (local.getUTCHours() * 60 + local.getUTCMinutes() >= 870 ? 0 : 86400000),
+  )
+    .toISOString()
+    .slice(0, 10);
+}
 export const DAY = 86400000;
 export const now = () => new Date().toISOString();
 export const taipeiDay = (value = new Date()) =>

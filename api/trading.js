@@ -1,4 +1,4 @@
-import { fetchJSON, addDays, taipeiDay, fail } from "./lib.js";
+import { fetchJSON, addDays, taipeiDay, fail, dailySourceEnd } from "./lib.js";
 const URL = "https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule",
   fallback =
     "01-01 02-12 02-13 02-15 02-16 02-17 02-18 02-19 02-20 02-27 02-28 04-03 04-04 04-05 04-06 05-01 06-19 09-25 09-28 10-09 10-10 10-25 10-26 12-25".split(
@@ -49,10 +49,13 @@ export async function calendar(year, fetcher = fetchJSON) {
 export function clearCalendarCache() {
   cache.clear();
 }
-export async function marketStatus(stamp = new Date()) {
+export async function marketStatus(
+  stamp = new Date(),
+  calendarReader = calendar,
+) {
   const local = new Date(new Date(stamp).getTime() + 8 * 3600000),
     day = local.toISOString().slice(0, 10),
-    c = await calendar(local.getUTCFullYear()),
+    c = await calendarReader(local.getUTCFullYear()),
     weekend = [0, 6].includes(local.getUTCDay()),
     trading = c.known && !weekend && !(day in c.closed),
     minute = local.getUTCHours() * 60 + local.getUTCMinutes(),
@@ -63,6 +66,16 @@ export async function marketStatus(stamp = new Date()) {
     timezone: "Asia/Taipei",
     is_trading_day: trading,
     monitor_allowed: allowed,
+    phase: !c.known
+      ? "unknown"
+      : !trading
+        ? "closed"
+        : minute < 540
+          ? "preopen"
+          : allowed
+            ? "open"
+            : "after_close",
+    daily_source_end: dailySourceEnd(stamp),
     reason: !c.known
       ? "交易日曆無法確認，暫停自動監控"
       : c.closed[day] ||

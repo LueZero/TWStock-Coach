@@ -144,6 +144,20 @@ async function until(expression) {
       `document.getElementById('stockInput').value=${JSON.stringify(symbol)};document.getElementById('searchForm').requestSubmit()`,
     );
     await until(`state.stock.symbol===${JSON.stringify(symbol)}`);
+    if (saved.expected_day) {
+      await until(
+        `state.rows.at(-1)?.trade_date===${JSON.stringify(saved.expected_day)} && state.quote?.trade_date===${JSON.stringify(saved.expected_day)}`,
+      );
+      assert.equal(
+        await evaluate(`document.getElementById('endDate').value`),
+        saved.expected_day,
+      );
+      assert.ok(
+        await evaluate(
+          `document.getElementById('connectionState').textContent==='今日已收盤'`,
+        ),
+      );
+    }
     await evaluate(`selectSection('assistant',false)`);
     assert.ok(
       await evaluate(

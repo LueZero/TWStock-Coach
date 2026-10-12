@@ -54,6 +54,10 @@ async function selectStock(stock) {
   state.controller = new AbortController();
   state.generation++;
   state.stock = stock;
+  state.mode = "live";
+  $("endDate").value = taipeiDay();
+  if ($("startDate").value > taipeiDay())
+    $("startDate").value = shiftDay(taipeiDay(), -180);
   state.assistantOverlay = null;
   document.dispatchEvent(
     new CustomEvent("stock-coach:stock", { detail: { stock } }),
@@ -250,7 +254,16 @@ async function loadHistory(gen = state.generation) {
   try {
     await fetchHistory(gen);
     if (gen !== state.generation) return;
-    const historicalEnd = end >= taipeiDay() ? shiftDay(taipeiDay(), -1) : end;
+    let historicalEnd = end;
+    if (end >= taipeiDay()) {
+      const market = await json("/api/market/status");
+      if (gen !== state.generation) return;
+      state.market = market;
+      renderMonitorStatus();
+      historicalEnd = isMinute()
+        ? shiftDay(taipeiDay(), -1)
+        : market.daily_source_end || shiftDay(taipeiDay(), -1);
+    }
     if (start > historicalEnd) {
       state.loading = false;
       $("historyStatus").textContent = isMinute()
@@ -434,6 +447,7 @@ function applyRange(preset = null) {
 async function checkMarket(force = false) {
   if (!force && Date.now() - state.marketChecked < 60000) return;
   state.marketChecked = Date.now();
+  const previousDailyEnd = state.market?.daily_source_end;
   try {
     const response = await fetch("/api/market/status");
     if (!response.ok) throw Error();
@@ -445,8 +459,16 @@ async function checkMarket(force = false) {
     };
   }
   const active = $("autoRefresh").checked && state.market.monitor_allowed;
+  if (
+    previousDailyEnd &&
+    previousDailyEnd !== state.market.daily_source_end &&
+    state.mode === "live" &&
+    !isMinute() &&
+    $("endDate").value === taipeiDay()
+  )
+    restartHistory();
   if (active && !state.monitoringActive) {
-    const end = isMinute() ? taipeiDay() : shiftDay(taipeiDay(), -1);
+    const end = taipeiDay();
     $("endDate").max = taipeiDay();
     if ($("endDate").value !== end) {
       const days = Math.max(
@@ -616,7 +638,7 @@ export function initDashboardController() {
       return;
     }
     state.mode = "live";
-    $("endDate").value = isMinute() ? taipeiDay() : shiftDay(taipeiDay(), -1);
+    $("endDate").value = taipeiDay();
     if (isMinute()) $("startDate").value = shiftDay($("endDate").value, -7);
     renderQuote();
     renderBook();
@@ -661,7 +683,7 @@ export function initDashboardController() {
   clock();
   checkMarket();
   renderMonitorStatus();
-  $("endDate").value = shiftDay(taipeiDay(), -1);
+  $("endDate").value = taipeiDay();
   $("endDate").max = taipeiDay();
   $("startDate").value = shiftDay($("endDate").value, -180);
   $("resolution").value = "1d";

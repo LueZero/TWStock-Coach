@@ -9,6 +9,7 @@ import {
   daysBetween,
   fail,
   sleep,
+  dailySourceEnd,
 } from "./lib.js";
 import {
   FinMind,
@@ -41,9 +42,11 @@ export function historyRequest(r) {
     r.start < "1994-10-01" ||
     r.start > r.end ||
     daysBetween(r.end, r.start) > 3653 ||
-    r.end >= taipeiDay()
+    r.end > dailySourceEnd()
   )
-    fail("歷史範圍需由早到晚、最多十年、1994年10月起且截止早於今日");
+    fail(
+      "歷史範圍需由早到晚、最多十年、1994年10月起；今日完成日K於14:30後才可載入",
+    );
   if (
     r.timeframe === "1m" &&
     (daysBetween(r.end, r.start) > 30 ||
@@ -420,13 +423,10 @@ export function watchlist() {
     ).values(),
   ];
 }
-export async function enqueueWatchlist(
-  start = null,
-  end = addDays(taipeiDay(), -1),
-) {
+export async function enqueueWatchlist(start = null, end = dailySourceEnd()) {
   const ids = [];
   validDate(end);
-  if (end >= taipeiDay()) fail("日線更新截止需早於今日");
+  if (end > dailySourceEnd()) fail("日線更新不可包含尚未開放的盤後日期");
   for (const item of watchlist()) {
     for (const basis of process.env.ENABLE_ADJUSTED === "true"
       ? ["raw", "adjusted"]

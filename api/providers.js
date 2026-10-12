@@ -2,6 +2,7 @@ import Decimal from "decimal.js";
 import {
   addDays,
   taipeiDay,
+  dailySourceEnd,
   validDate,
   num,
   sleep,
@@ -88,7 +89,7 @@ export class FinMind {
       const day = validDate(item.date);
       if (item.stock_id !== symbol || day < start || day > end)
         throw Error("Provider returned a different symbol/date range");
-      if (day >= taipeiDay()) continue;
+      if (day > dailySourceEnd()) continue;
       try {
         bars.push(
           validateBar({

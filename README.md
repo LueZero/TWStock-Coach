@@ -111,7 +111,7 @@ $env:CODEX_BIN = "C:\Tools\Codex\codex.exe"
 npm run assistant:start
 ```
 
-也可在 `.env` 設定 `CODEX_BIN` 後重啟 Agent。使用 VS Code 附帶的 CLI 時，請確認執行檔路徑；擴充套件更新可能改變路徑。若顯示 `EADDRINUSE`，表示 8010 已有服務，先確認既有 Agent，避免重複啟動。若前台顯示離線，先查看 Agent 終端；可在 PowerShell 執行 `Invoke-RestMethod http://127.0.0.1:8010/api/assistant/status` 檢查 CLI 與訂閱登入狀態。
+也可在 `.env` 設定 `CODEX_BIN` 後重啟 Agent。使用 VS Code 附帶的 CLI 時，預設會從PATH及已安裝VS Code擴充目錄尋找原生執行檔，避免擴充更新後舊PATH失效；明確指定CODEX_BIN時仍使用指定路徑。若顯示 `EADDRINUSE`，表示 8010 已有服務，先確認既有 Agent，避免重複啟動。若前台顯示離線，先查看 Agent 終端；可在 PowerShell 執行 `Invoke-RestMethod http://127.0.0.1:8010/api/assistant/status` 檢查 CLI 與訂閱登入狀態。
 
 ### 前端建置與預覽
 
@@ -297,7 +297,7 @@ npm run verify:market-layout
 npm run verify:chips
 ```
 
-目前工作區 `npm test` 有 **8 項測試**：6項資料預先提交／摘要檢核與2項前端測試，涵蓋自動期間補查、手動／歷史截止限制、卡片證據與價位、完整分頁明細、移除個人資金假設、全區間K線、資料清單、取消、工具保留、摘要引用及市場指標。已不存在的根目錄測試不當成現行覆蓋。報告功能另須驗證實際 API、工具查詢與截止時間；分析由報告模板引導，缺漏依本次資料覆蓋判斷，詳見[功能設計](docs/FEATURES.md#ai-分析報告)。驗證入口見[架構設計](docs/DESIGN.md#驗證與維護)。
+目前工作區 `npm test` 有 **11 項測試**：9項資料預先提交／摘要檢核與2項前端測試，涵蓋自動期間補查、手動／歷史截止限制、卡片證據與價位、完整分頁明細、移除個人資金假設、全區間K線、資料清單、取消、工具保留、摘要引用及市場指標。已不存在的根目錄測試不當成現行覆蓋。報告功能另須驗證實際 API、工具查詢與截止時間；分析由報告模板引導，缺漏依本次資料覆蓋判斷，詳見[功能設計](docs/FEATURES.md#ai-分析報告)。驗證入口見[架構設計](docs/DESIGN.md#驗證與維護)。
 
 `API_BASE_URL` 可指定 API 驗證位址；`WEB_BASE_URL` 可讓服務驗證同時檢查前端。`BASE_URL` 用於瀏覽器驗證，例如改測 `4173` 建置預覽。
 

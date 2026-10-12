@@ -1098,7 +1098,13 @@ function renderMonitorStatus() {
   $("connectionState").textContent = !state.market
     ? "確認市場"
     : !state.market.monitor_allowed
-      ? "休市／盤外"
+      ? {
+          preopen: "尚未開盤",
+          after_close: "今日已收盤",
+          closed: "今日休市",
+          unknown: "市場待確認",
+        }[state.market.phase] ||
+        (state.market.is_trading_day ? "今日已收盤" : "今日休市")
       : !$("autoRefresh").checked
         ? "手動更新"
         : state.quote &&

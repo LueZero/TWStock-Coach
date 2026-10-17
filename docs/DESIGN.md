@@ -1,6 +1,6 @@
 # 架構設計
 
-更新：2026-10-17，版本1.2.0。平台後端使用 Node.js ES modules；AI 分析另呼叫 Codex CLI，不依賴 Python 後端。前端使用 Vite、Bootstrap 與 ES modules MVC；開發服務及正式靜態網站均獨立於API。Fastify不提供看盤前端。
+更新：2026-10-18，版本1.2.0。平台後端使用 Node.js ES modules；AI 分析另呼叫 Codex CLI，不依賴 Python 後端。前端使用 Vite、Bootstrap 與 ES modules MVC；開發服務及正式靜態網站均獨立於API。Fastify不提供看盤前端。
 
 ```mermaid
 flowchart LR
@@ -251,3 +251,9 @@ scripts/setup_env.js 與 setup_assistant.js 是環境設定工具；verify_* 是
 ### 行情快照修訂
 
 相同market／symbol／source_time的公開行情，內容相同僅重複觀察時保留首次received_at；內容變動時先將原版本保存於quote_revisions，再更新正式快照。歷史研究從正式版本與修訂版本中選截止前已接收且行情時間不晚於截止者。此機制只保護升級後取得的修訂；升級前已被覆寫的內容不能自動還原，舊報告檔案不回寫。
+
+### 共用K棒技術事件
+
+api/technical-events.js提供純函式annotateTechnicalRows與technical-events-v1，api/charting.js先聚合完成K線再套用；report-conditions.js與agent/tools.js也套用同一規則。先計算暖機資料的交叉，再依所選區間過濾，避免區間第一根遺失事件。每根保存technical_state、technical_events與signals；事件含時間戳、方向、類別、數值依據與版本。未完成K不更新正式比較前值，沒有前值不猜測交叉。
+
+web/src/views/technical-markers.js是兩個趨勢圖共用的SVG標記繪製器，方向分開、文字避讓、鍵盤與點選保留K棒定位。AI的technical資料包帶入完整區間事件，圖表保存120根的上限不裁切模型輸入。事件定位ID與引用證據ID分開；既有報告不重新計算新事件。瀏覽器驗證使用真實資料包檢查兩種圖表與分類操作，不為驗證啟動模型。

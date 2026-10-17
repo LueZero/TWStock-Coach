@@ -26,7 +26,7 @@ export function stockPriceValues(
   };
   const metrics = (data) => {
     for (const [k, v] of Object.entries(data || {}))
-      if (/^ma\d+$|^bb_(upper|lower)$|^prior_high\d+$/.test(k)) add(v);
+      if (/^ma\d+$|^bb_(upper|lower)$|^prior_(high|low)\d+$/.test(k)) add(v);
   };
   const priceRow = (row) => {
     for (const k of [
@@ -50,7 +50,7 @@ export function stockPriceValues(
   for (const e of report.evidence || []) {
     const id = e.original_id || e.id || "";
     if (
-      /(?:^|:)price:last$|(?:^|:)technical:(?:ma\d+|bb_upper|bb_lower|prior_high\d+)$/.test(
+      /(?:^|:)price:last$|(?:^|:)technical:(?:ma\d+|bb_upper|bb_lower|prior_(?:high|low)\d+)$/.test(
         id,
       )
     )

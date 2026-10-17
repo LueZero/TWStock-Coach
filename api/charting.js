@@ -1,5 +1,5 @@
 import { calculate, advise, METRICS, MA_PERIODS } from "./indicators.js";
-import { technical } from "./strategy.js";
+import { annotateTechnicalRows } from "./technical-events.js";
 import { addDays, taipeiDay } from "./lib.js";
 export const RESOLUTIONS = [
   "1m",
@@ -100,7 +100,10 @@ export function aggregate(
   final.forEach((bar, i) => {
     const [status, advice] = advise(computed[i], bar.price_basis);
     bar.analysis = Object.fromEntries(
-      [...METRICS, "prior_high20"].map((k) => [k, computed[i][k] ?? null]),
+      [...METRICS, "prior_high20", "prior_low20"].map((k) => [
+        k,
+        computed[i][k] ?? null,
+      ]),
     );
     Object.assign(bar.analysis, { status, advice });
     for (const p of periods)
@@ -109,23 +112,12 @@ export function aggregate(
           ? final.slice(i - p + 1, i + 1).reduce((a, r) => a + r.close, 0) / p
           : null;
   });
-  let previous = null;
-  for (const bar of result) {
-    bar.signals = [];
-    const a = bar.analysis;
-    if (!a) continue;
-    if (
-      previous &&
-      [a.ma5, a.ma20, previous.ma5, previous.ma20].every((v) => v != null)
-    ) {
-      if (previous.ma5 <= previous.ma20 && a.ma5 > a.ma20)
-        bar.signals.push("MA5 上穿 MA20");
-      if (previous.ma5 >= previous.ma20 && a.ma5 < a.ma20)
-        bar.signals.push("MA5 下穿 MA20");
-    }
-    if (a.status === "breakout") bar.signals.push("量價突破");
-    if (technical(bar)[1]) bar.signals.push("技術進場候選（未含財報）");
-    previous = a;
-  }
-  return result;
+  return annotateTechnicalRows(
+    result.map((r) => ({ ...r, ...r.analysis })),
+  ).map(({ technical_state, technical_events, signals }, i) => ({
+    ...result[i],
+    technical_state,
+    technical_events,
+    signals,
+  }));
 }

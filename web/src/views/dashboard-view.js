@@ -1,5 +1,6 @@
 import { renderOrderbook } from "./orderbook-view.js";
 import { observedQuote } from "../models/quote-freshness.js";
+import { renderTechnicalMarkers } from "./technical-markers.js";
 import {
   state,
   completed,
@@ -482,6 +483,14 @@ export function renderSectionContext() {
 }
 function renderAnalysis() {
   renderSectionContext();
+  const signalRows = state.selected?.technical_events || [];
+  $("selectedSignalDetails").hidden = !signalRows.length;
+  $("selectedSignalRows").replaceChildren();
+  for (const event of signalRows) {
+    const p = document.createElement("p");
+    p.textContent = `${event.label}：${event.note}`;
+    $("selectedSignalRows").append(p);
+  }
   const last = state.selected || completed().at(-1),
     a = last?.analysis;
   renderQuickMetrics(last);
@@ -634,6 +643,9 @@ function plot() {
     state.viewport.start + count,
   );
   if (!rows.length) {
+    $("chartSignalSummary").textContent = intraday
+      ? "公開快照不產生K棒技術訊號。"
+      : "目前可視區沒有K棒技術訊號。";
     svgText(
       svg,
       intraday
@@ -846,22 +858,26 @@ function plot() {
       );
     });
   }
-  if (!intraday && $("showSignals").checked)
-    rows.forEach((r, i) => {
-      if (!r.is_final || !r.signals?.length) return;
-      const rising = !r.signals.some((signal) => signal.includes("下穿"));
-      const marker = svgNode("path", {
-        d: rising
-          ? `M${x(i)},${y(r.low) + 7} l-5,8 h10 z`
-          : `M${x(i)},${y(r.high) - 7} l-5,-8 h10 z`,
-        fill: rising ? "#f0c26c" : "#bf9cfc",
-        "data-signal": r.signals.join("、"),
-      });
-      const title = svgNode("title");
-      title.textContent = `${r.trade_date}：${r.signals.join("、")}`;
-      marker.append(title);
-      svg.append(marker);
-    });
+  const signalCount =
+    !intraday && $("showSignals").checked
+      ? renderTechnicalMarkers({
+          svg,
+          rows,
+          x,
+          y,
+          left,
+          right,
+          top,
+          bottom,
+          filter: $("signalCategory").value,
+          onSelect: (row) => {
+            selectBar(row);
+            $("selectedSignalDetails").open = true;
+          },
+        })
+      : 0;
+  $("chartSignalSummary").textContent =
+    `紅▲偏多／綠▼偏空 · 可視區 ${signalCount} 筆訊號；同棒多筆顯示 +數量。`;
   rows.forEach((r, i) => {
     const volume = volumes[i];
     if (volume == null) return;

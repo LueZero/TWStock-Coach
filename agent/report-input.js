@@ -139,6 +139,10 @@ export async function prepareReportInput(
           "atr14",
           "bb_upper",
           "bb_lower",
+          "prior_high20",
+          "prior_low20",
+          "technical_state",
+          "signals",
           "source_time",
           "received_at",
         ];

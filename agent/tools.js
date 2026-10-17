@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import { calculate } from "../api/indicators.js";
+import {
+  annotateTechnicalRows,
+  EVENT_VERSION,
+} from "../api/technical-events.js";
 import { calculateTrade } from "./trade-math.js";
 
 export const sections = [
@@ -311,7 +315,7 @@ export function createStockTools(
           data = {
             metrics: report.metrics,
             bars: page(
-              calculate(input.bars).filter(
+              annotateTechnicalRows(calculate(input.bars)).filter(
                 (b) => b.trade_date >= scope.start && b.trade_date <= scope.end,
               ),
               offset,
@@ -320,6 +324,9 @@ export function createStockTools(
             ),
             observations: report.observations,
             annotations: report.chart_annotations,
+            technical_event_version: EVENT_VERSION,
+            annotation_note:
+              "technical_state是持續排列；signals／annotations是當期新事件。事件event_id僅定位K棒，不是引用證據ID；引用本次technical查詢的evidence_id。週期與價格基準相同才可比較，事件不等於買賣指令。",
             quality: input.quality,
             price_basis: "raw",
             final_bars_only: true,

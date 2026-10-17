@@ -1,3 +1,7 @@
+import {
+  renderTechnicalMarkers,
+  signalCategories,
+} from "./technical-markers.js";
 const $ = (id) => document.getElementById(id);
 export const element = (tag, text, cls) => {
   const e = document.createElement(tag);
@@ -594,13 +598,41 @@ export function renderAssistantReport(report, tab, actions) {
       "將游標移到日K，查看當日均線結構及技術事件。點選可設定歷史分析日。",
       "assistant-chart-readout",
     );
+    const signalSelect = element("select");
+    signalSelect.setAttribute("aria-label", "報告技術訊號分類");
+    signalSelect.dataset.reportSignals = "true";
+    for (const [value, label] of signalCategories) {
+      const option = element("option", label);
+      option.value = value;
+      signalSelect.append(option);
+    }
+    signalSelect.onchange = () => draw();
+    tools.append(signalSelect);
+    const signalDetails = element("details", null, "assistant-facet-details");
+    const signalSummary = element("summary", "查看此K棒的訊號依據");
+    const signalBody = element("div");
+    signalDetails.append(signalSummary, signalBody);
+    signalDetails.hidden = true;
+    const eventsForRow = (r) =>
+      (report.chart_annotations || []).filter((m) =>
+        m.timestamp ? m.timestamp === r.timestamp : m.date === r.trade_date,
+      );
+    const observe = (r) => {
+      const events = eventsForRow(r);
+      readout.textContent = `${r.trade_date} · 開 ${money(r.open)}／高 ${money(r.high)}／低 ${money(r.low)}／收 ${money(r.close)} · ${r.technical_state?.label || r.technical_label || "舊報告未保存逐日技術標記"}${events.length ? " · " + events.map((e) => e.label).join("、") : " · 當日無新技術事件"}`;
+      signalDetails.hidden = !events.length;
+      signalBody.replaceChildren();
+      for (const event of events)
+        signalBody.append(element("p", `${event.label}：${event.note}`));
+    };
     target.append(
       tools,
       svg,
       readout,
+      signalDetails,
       element(
         "p",
-        "實線：黃色MA5、藍色MA20、紫色MA60。虛線：候選觸發／失效／目標；圓點：當日技術事件。標記不等於已成交買賣點。點選K線可設定當時分析日。",
+        `實線：黃色MA5、藍色MA20、紫色MA60。虛線：候選觸發／失效／目標。紅▲偏多、綠▼偏空；文字自動避讓，同日多筆顯示+數量。點標記看依據，點K線可設定歷史分析日。${report.technical_event_version ? `規則 ${report.technical_event_version}。` : "舊報告保留當時已保存事件，未補推新訊號。"}`,
         "subtle",
       ),
       button("回個股看盤工作台", () => actions.dashboard(report)),
@@ -637,7 +669,7 @@ export function renderAssistantReport(report, tab, actions) {
         graph.offset + graph.count,
       );
       caption.textContent = `${data[0].trade_date}～${data.at(-1).trade_date} · ${data.length} 根`;
-      readout.textContent = `${data.at(-1).trade_date} · 收 ${money(data.at(-1).close)} · ${data.at(-1).technical_label || "舊報告未保存逐日技術標記"}。移到日K查看完整數值。`;
+      observe(data.at(-1));
       const width = Math.max(200, svg.getBoundingClientRect().width),
         height = svg.getBoundingClientRect().height || 350,
         left = 12,
@@ -713,15 +745,12 @@ export function renderAssistantReport(report, tab, actions) {
             " " +
             (r.technical_label || ""),
         });
-        const observe = () => {
-          const marks = (report.chart_annotations || [])
-            .filter((m) => m.date === r.trade_date)
-            .map((m) => m.label);
-          readout.textContent = `${r.trade_date} · 開 ${money(r.open)}／高 ${money(r.high)}／低 ${money(r.low)}／收 ${money(r.close)} · ${r.technical_label || "舊報告未保存逐日技術標記"}${marks.length ? " · " + marks.join("、") : ""}`;
+        hit.onmouseenter = () => observe(r);
+        hit.onfocus = () => observe(r);
+        hit.onclick = () => {
+          observe(r);
+          actions.bar(r);
         };
-        hit.onmouseenter = observe;
-        hit.onfocus = observe;
-        hit.onclick = () => actions.bar(r);
         hit.onkeydown = (e) => {
           if (e.key === "Enter") actions.bar(r);
         };
@@ -747,21 +776,22 @@ export function renderAssistantReport(report, tab, actions) {
           "pointer-events": "none",
         });
       }
-      for (const mark of report.chart_annotations || []) {
-        const i = data.findIndex((r) => r.trade_date === mark.date);
-        if (i < 0) continue;
-        const dot = node("circle", {
-          cx: x(i),
-          cy: y(data[i].high) - 8,
-          r: 4,
-          fill: mark.kind === "support" ? "#f27b8c" : "#53c9a2",
-          "pointer-events": "none",
-          "data-technical-event": mark.label,
-        });
-        const title = document.createElementNS(svg.namespaceURI, "title");
-        title.textContent = `${mark.date} ${mark.label}：${mark.note}`;
-        dot.append(title);
-      }
+      renderTechnicalMarkers({
+        svg,
+        rows: data,
+        x,
+        y,
+        left,
+        right,
+        top,
+        bottom,
+        eventsForRow,
+        filter: signalSelect.value,
+        onInspect: observe,
+        onSelect: () => {
+          signalDetails.open = true;
+        },
+      });
       for (const s of report.scenarios)
         for (const [key, color] of [
           ["trigger", "#eac36f"],

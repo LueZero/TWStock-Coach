@@ -272,6 +272,17 @@
                     />技術訊號</label
                   >
                   <label
+                    >訊號分類<select
+                      id="signalCategory"
+                      aria-label="技術訊號分類"
+                    >
+                      <option value="all">全部訊號</option>
+                      <option value="ma">均線排列／交叉</option>
+                      <option value="momentum">MACD／KD交叉</option>
+                      <option value="levels">突破／跌破</option>
+                    </select></label
+                  >
+                  <label
                     >副圖
                     <select id="subIndicator">
                       <option value="macd">MACD</option>
@@ -323,9 +334,15 @@
               <p id="selectedBar" class="subtle" role="status">
                 點選 K 線可查看該期價格、技術指標與訊號。
               </p>
+              <details id="selectedSignalDetails" class="subtle" hidden>
+                <summary>查看此K棒的訊號依據</summary>
+                <div id="selectedSignalRows"></div>
+              </details>
               <p class="subtle">
-                ▲ MA5 上穿 MA20／量價突破／技術進場候選　▼ MA5 下穿
-                MA20；標記只使用完成 K 線，代表規則觀察。
+                <span id="chartSignalSummary"
+                  >紅▲偏多／綠▼偏空；均線、MACD／KD交叉、突破／跌破。</span
+                >
+                文字自動避讓，放大或點標記可看完整依據；訊號只用完成K線，不等於買賣指令。
               </p>
             </section>
             <section

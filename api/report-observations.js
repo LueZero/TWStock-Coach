@@ -1,4 +1,5 @@
 import { num, sum } from "./lib.js";
+import { annotateTechnicalRows } from "./technical-events.js";
 
 export const assetType = (symbol, industry = "") =>
   /ETF|指數股票型基金/i.test(industry) || /^00\d{2,}[A-Z]?$/i.test(symbol)
@@ -219,48 +220,7 @@ export function technicalObservations(rows) {
 }
 
 export function chartAnnotations(rows, start, end) {
-  const marks = [];
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i],
-      p = rows[i - 1];
-    if (r.trade_date < start || r.trade_date > end) continue;
-    const mark = (kind, label, note) =>
-      marks.push({ date: r.trade_date, kind, label, note });
-    if ([p.macd_histogram, r.macd_histogram].every((v) => num(v) != null)) {
-      if (p.macd_histogram <= 0 && r.macd_histogram > 0)
-        mark(
-          "support",
-          "MACD黃金交叉",
-          "柱狀值由非正轉正；完成日K的動能觀測。",
-        );
-      if (p.macd_histogram >= 0 && r.macd_histogram < 0)
-        mark("oppose", "MACD死亡交叉", "柱狀值由非負轉負；完成日K的動能觀測。");
-    }
-    const complete = [r.ma5, r.ma20, r.ma60, p.ma5, p.ma20, p.ma60].every(
-      (v) => num(v) != null,
-    );
-    if (
-      complete &&
-      r.ma5 > r.ma20 &&
-      r.ma20 > r.ma60 &&
-      !(p.ma5 > p.ma20 && p.ma20 > p.ma60)
-    )
-      mark(
-        "support",
-        "均線轉多頭排列",
-        "當日首次符合MA5 > MA20 > MA60；不表示未來報酬或均線斜率。",
-      );
-    if (
-      complete &&
-      r.ma5 < r.ma20 &&
-      r.ma20 < r.ma60 &&
-      !(p.ma5 < p.ma20 && p.ma20 < p.ma60)
-    )
-      mark(
-        "oppose",
-        "均線轉空頭排列",
-        "當日首次符合MA5 < MA20 < MA60；不是已成交賣點。",
-      );
-  }
-  return marks.slice(-16);
+  return annotateTechnicalRows(rows)
+    .filter((r) => r.trade_date >= start && r.trade_date <= end)
+    .flatMap((r) => r.technical_events);
 }

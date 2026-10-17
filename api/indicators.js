@@ -116,6 +116,8 @@ export function calculate(rows) {
     }
     a.prior_high20 =
       i >= 20 ? Math.max(...rows.slice(i - 20, i).map((r) => r.high)) : null;
+    a.prior_low20 =
+      i >= 20 ? Math.min(...rows.slice(i - 20, i).map((r) => r.low)) : null;
     return a;
   });
 }

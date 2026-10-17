@@ -169,6 +169,52 @@ async function until(expression, timeout = 60000) {
     await until(
       `state.generation>${stockGeneration} && state.stock.symbol===${JSON.stringify(symbol)}`,
     );
+    await until(`state.rows.some(r=>r.technical_events?.length>0)`);
+    await evaluate(
+      `selectSection('overview',false);document.getElementById('showSignals').checked=true;document.getElementById('signalCategory').value='all';plot()`,
+    );
+    assert.ok(
+      await evaluate(
+        `document.querySelectorAll('#chart [data-event-label]').length>0`,
+      ),
+    );
+    await evaluate(
+      `document.getElementById('signalCategory').value='momentum';document.getElementById('signalCategory').dispatchEvent(new Event('change'))`,
+    );
+    assert.ok(
+      await evaluate(
+        `Array.from(document.querySelectorAll('#chart [data-technical-event]')).every(e=>/MACD|KD/.test(e.dataset.technicalEvent))`,
+      ),
+    );
+    const signalClick = await evaluate(
+      `(() => { const m=document.querySelector('#chart [data-technical-event]'),r=m.querySelector('path').getBoundingClientRect();return {timestamp:m.dataset.barTimestamp,x:r.x+r.width/2,y:r.y+r.height/2}; })()`,
+    );
+    await send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: signalClick.x,
+      y: signalClick.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: signalClick.x,
+      y: signalClick.y,
+      button: "left",
+      clickCount: 1,
+    });
+    assert.equal(
+      await evaluate(`state.selected.timestamp`),
+      signalClick.timestamp,
+    );
+    assert.ok(
+      await evaluate(
+        `document.getElementById('selectedSignalDetails').open && document.getElementById('selectedSignalRows').children.length>0`,
+      ),
+    );
+    await evaluate(
+      `document.getElementById('signalCategory').value='all';plot()`,
+    );
     if (saved.expected_day) {
       await until(
         `state.rows.at(-1)?.trade_date===${JSON.stringify(saved.expected_day)} && state.quote?.trade_date===${JSON.stringify(saved.expected_day)}`,
@@ -285,6 +331,46 @@ async function until(expression, timeout = 60000) {
       );
       await evaluate(`document.getElementById('assistantContent').scrollTop=0`);
     }
+    // Render a newly computed rule report using real platform data. This checks
+    // the new event format without launching a model or rewriting saved reports.
+    const signalReport = await evaluate(`(async () => {
+      const response=await fetch('/api/research/report-input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({market:state.stock.market,symbol:state.stock.symbol,mode:'historical',start:'2026-04-01',as_of:new Date().toISOString(),message:'驗證K線訊號'})});
+      if(!response.ok)throw Error('signal packet '+response.status);
+      const packet=await response.json(), view=await import('/src/views/assistant-view.js');
+      view.renderAssistantReport(packet.report,'chart',{bar:r=>{globalThis.__signalBarDate=r.trade_date;},dashboard(){},tab(){},evidence(){}});
+      return {events:packet.report.chart_annotations.length,version:packet.report.technical_event_version};
+    })()`);
+    assert.equal(signalReport.version, "technical-events-v1");
+    assert.ok(signalReport.events > 16);
+    assert.ok(
+      await evaluate(
+        `document.querySelectorAll('.assistant-chart [data-event-label]').length>0`,
+      ),
+    );
+    await evaluate(
+      `const s=document.querySelector('[data-report-signals]');s.value='levels';s.dispatchEvent(new Event('change'))`,
+    );
+    assert.ok(
+      await evaluate(
+        `Array.from(document.querySelectorAll('.assistant-chart [data-technical-event]')).every(e=>/突破|跌破|站回/.test(e.dataset.technicalEvent))`,
+      ),
+    );
+    await evaluate(
+      `document.querySelector('.assistant-chart [data-technical-event]').dispatchEvent(new MouseEvent('click',{bubbles:true}))`,
+    );
+    assert.ok(
+      await evaluate(
+        `document.querySelector('.assistant-chart-readout').textContent.includes('MA20') || /突破|跌破/.test(document.querySelector('.assistant-chart-readout').textContent)`,
+      ),
+    );
+    const signalShot = await send("Page.captureScreenshot", { format: "png" });
+    fs.writeFileSync(
+      path.join(scratch, "technical-report-chart.png"),
+      Buffer.from(signalShot.data, "base64"),
+    );
+    await evaluate(
+      `document.querySelector('[data-report-tab="summary"]').click()`,
+    );
     for (const tab of ["plan", "evidence", "quality", "chart", "summary"]) {
       await evaluate(
         `document.querySelector('[data-report-tab="${tab}"]').click()`,
@@ -436,6 +522,7 @@ async function until(expression, timeout = 60000) {
         chatCollapse: true,
         stockIsolation: true,
         searchRace: true,
+        technicalMarkers: true,
         screenshots: 2,
       }),
     );

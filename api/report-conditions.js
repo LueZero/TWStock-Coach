@@ -1,4 +1,5 @@
 import { calculate, VERSION as indicatorVersion } from "./indicators.js";
+import { annotateTechnicalRows, EVENT_VERSION } from "./technical-events.js";
 import { scenarioPrice, tickCents, moveTicks } from "./calculator.js";
 import { addDays, num } from "./lib.js";
 import {
@@ -28,7 +29,7 @@ export function buildRuleReport(packet) {
   const bars = packet.bars
     .filter((b) => b.is_final)
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  const calculated = calculate(bars),
+  const calculated = annotateTechnicalRows(calculate(bars)),
     last = calculated.at(-1),
     evidence = [...packet.evidence];
   const quality = [...packet.quality];
@@ -52,6 +53,7 @@ export function buildRuleReport(packet) {
           "bb_upper",
           "bb_lower",
           "prior_high20",
+          "prior_low20",
         ].map((k) => [k, num(last[k])]),
       )
     : {};
@@ -241,6 +243,7 @@ export function buildRuleReport(packet) {
   const holding = null;
   return {
     version: RULE_VERSION,
+    technical_event_version: EVENT_VERSION,
     meta: {
       market: packet.market,
       symbol: packet.symbol,
@@ -310,6 +313,7 @@ export function buildRuleReport(packet) {
         timestamp: b.timestamp,
         id: b.id,
         revision: b.revision,
+        is_final: b.is_final,
         trade_date: b.trade_date,
         open: b.open,
         high: b.high,
@@ -319,6 +323,9 @@ export function buildRuleReport(packet) {
         ma5: b.ma5,
         ma20: b.ma20,
         ma60: b.ma60,
+        technical_state: b.technical_state,
+        technical_events: b.technical_events,
+        signals: b.signals,
         technical_label: technicalObservations([b])
           .filter((r) => ["short_trend", "alignment"].includes(r.id))
           .map((r) => r.label)

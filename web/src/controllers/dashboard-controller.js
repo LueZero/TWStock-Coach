@@ -354,7 +354,7 @@ function selectBar(row) {
     new CustomEvent("stock-coach:bar", { detail: { row } }),
   );
   $("selectedBar").textContent =
-    `${localTime(row.timestamp)} · ${periodLabel()} K · 收盤 ${fmt(row.close)} · ${row.is_final ? "已完成" : "未完成"} · ${row.signals?.join("、") || "無交叉／突破訊號"}`;
+    `${localTime(row.timestamp)} · ${periodLabel()} K · 收盤 ${fmt(row.close)} · ${row.is_final ? "已完成" : "未完成"} · ${row.technical_state?.label || ""} · ${row.signals?.join("、") || "當期無新交叉／突破／跌破訊號"}`;
   renderAnalysis();
 }
 
@@ -547,7 +547,13 @@ export function initDashboardController() {
   };
   $("chart").onpointerdown = (event) => {
     if (!chartState) return;
-    drag = { x: event.clientX, start: state.viewport.start, moved: false };
+    drag = {
+      x: event.clientX,
+      start: state.viewport.start,
+      moved: false,
+      markerTimestamp: event.target.closest?.("[data-bar-timestamp]")?.dataset
+        .barTimestamp,
+    };
     $("chart").setPointerCapture?.(event.pointerId);
   };
   $("chart").onpointerup = (event) => {
@@ -561,7 +567,11 @@ export function initDashboardController() {
           Math.abs(chartState.x(i) - px) < Math.abs(chartState.x(closest) - px)
         )
           closest = i;
-      selectBar(chartState.rows[closest]);
+      const marked = chartState.rows.findIndex(
+        (r) => r.timestamp === drag.markerTimestamp,
+      );
+      selectBar(chartState.rows[marked >= 0 ? marked : closest]);
+      if (marked >= 0) $("selectedSignalDetails").open = true;
     }
     drag = null;
   };
@@ -598,6 +608,12 @@ export function initDashboardController() {
     let closest = 0;
     for (let i = 1; i < rows.length; i++)
       if (Math.abs(x(i) - px) < Math.abs(x(closest) - px)) closest = i;
+    const marked = rows.findIndex(
+      (r) =>
+        r.timestamp ===
+        event.target.closest?.("[data-bar-timestamp]")?.dataset.barTimestamp,
+    );
+    if (marked >= 0) closest = marked;
     const r = rows[closest],
       line = $("crosshair");
     line.setAttribute("x1", x(closest));
@@ -605,7 +621,7 @@ export function initDashboardController() {
     line.setAttribute("visibility", "visible");
     $("chartTooltip").textContent = intraday
       ? `${localTime(r.source_time)}\n最新成交 ${fmt(r.last_price)}\n累計量 ${amount(r.volume_shares)} ${$("volumeUnit").value === "lots" ? "張" : "股"}`
-      : `${isMinute() ? localTime(r.timestamp) : r.trade_date} · ${r.is_final ? "完成" : "未完成"} ${periodLabel()} K\n開盤 ${fmt(r.open)}　最高 ${fmt(r.high)}\n最低 ${fmt(r.low)}　收盤 ${fmt(r.close)}\n成交量 ${amount(r.volume)} ${$("volumeUnit").value === "lots" ? "張" : "股"}\n${[...state.shownMAs].map((p) => `MA${p} ${fmt(maValue(r, p))}`).join("　")}\n${r.signals?.join("、") || "無交叉／突破訊號"}`;
+      : `${isMinute() ? localTime(r.timestamp) : r.trade_date} · ${r.is_final ? "完成" : "未完成"} ${periodLabel()} K\n開盤 ${fmt(r.open)}　最高 ${fmt(r.high)}\n最低 ${fmt(r.low)}　收盤 ${fmt(r.close)}\n成交量 ${amount(r.volume)} ${$("volumeUnit").value === "lots" ? "張" : "股"}\n${[...state.shownMAs].map((p) => `MA${p} ${fmt(maValue(r, p))}`).join("　")}\n${r.technical_state?.label || ""} · ${r.signals?.join("、") || "當期無新技術事件"}`;
     $("chartTooltip").hidden = false;
   };
   $("chart").onpointerleave = () => {
@@ -659,6 +675,7 @@ export function initDashboardController() {
     plot();
   };
   $("showSignals").onchange = () => plot();
+  $("signalCategory").onchange = () => plot();
   $("showBollinger").onchange = () => plot();
   $("subIndicator").onchange = () => plot();
   $("panLeft").onclick = () =>

@@ -8,6 +8,7 @@ import {
 import { createReportStore, validateId } from "./report-store.js";
 import { codexHealth, runCodex, PROMPT_VERSION } from "./codex-adapter.js";
 import { validateExplanation } from "./report-schema.js";
+import { validationReport as buildValidationReport } from "./report-validation.js";
 
 const fail = (message, statusCode = 422) => {
   throw Object.assign(Error(message), { statusCode });
@@ -202,29 +203,7 @@ export function createAgent({
             data: { ...call.data, evidence: call.evidence || [] },
           });
       }
-      const fresh = calls.filter(
-        (c) => c.status === "completed" && c.evidence_id,
-      );
-      const technical = fresh.find((c) => c.arguments.section === "technical");
-      const scenario = fresh.find((c) => c.arguments.section === "scenarios");
-      const validationReport = calls.length
-        ? {
-            asset:
-              fresh.find((c) => c.arguments.section === "overview")?.data.meta
-                ?.asset || doc.report.meta.asset,
-            evidence: fresh.flatMap((c) => [
-              { id: c.evidence_id, data: c.data },
-              ...(c.evidence || []),
-            ]),
-            metrics: technical?.data.metrics || {},
-            scenarios: scenario?.data.scenarios || [],
-            holding: scenario?.data.holding,
-            observations: technical?.data.observations || [],
-            chart_bars: [],
-            user_message: text,
-            query_windows: fresh.map((c) => ({ start: c.start, end: c.end })),
-          }
-        : doc.report;
+      const validationReport = buildValidationReport(calls, doc.report, text);
       let result;
       try {
         result = validateExplanation(response.result, validationReport);

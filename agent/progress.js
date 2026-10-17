@@ -27,6 +27,15 @@ export function cliActivity(event) {
     event.item.server === "stock" &&
     ["item.started", "item.completed"].includes(event.type)
   ) {
+    if (event.item.tool === "validate_report_draft")
+      return {
+        phase: "validating",
+        message:
+          event.type === "item.started"
+            ? "AI正在預檢報告；若有錯誤將於本次分析中修正"
+            : "AI已取得草稿檢核結果，正在確認最終內容",
+        tool: event.item.tool,
+      };
     const args = event.item.arguments || {},
       label =
         labels[args.section] ||

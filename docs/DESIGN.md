@@ -257,3 +257,9 @@ scripts/setup_env.js 與 setup_assistant.js 是環境設定工具；verify_* 是
 api/technical-events.js提供純函式annotateTechnicalRows與technical-events-v1，api/charting.js先聚合完成K線再套用；report-conditions.js與agent/tools.js也套用同一規則。先計算暖機資料的交叉，再依所選區間過濾，避免區間第一根遺失事件。每根保存technical_state、technical_events與signals；事件含時間戳、方向、類別、數值依據與版本。未完成K不更新正式比較前值，沒有前值不猜測交叉。
 
 web/src/views/technical-markers.js是兩個趨勢圖共用的SVG標記繪製器，方向分開、文字避讓、鍵盤與點選保留K棒定位。AI的technical資料包帶入完整區間事件，圖表保存120根的上限不裁切模型輸入。事件定位ID與引用證據ID分開；既有報告不重新計算新事件。瀏覽器驗證使用真實資料包檢查兩種圖表與分類操作，不為驗證啟動模型。
+
+### 報告草稿驗證與金額維度
+
+`agent/report-validation.js`統一當次成功工具呼叫的驗證資料組裝，供MCP草稿檢核與`server.js`正式保存共用；不合併前次聊天或失敗呼叫作證據。`validate_report_draft`讀取本次tool-audit，傳回valid、錯誤位置與修正提示，本身不加入證據清單、不寫正式報告。Codex依原生agent loop修正，平台不另建模型重試服務。
+
+`agent/monetary-assertions.js`將常見元金額的文字位置、類別與有號數值分離。虧損並列清單沿用損失方向；新子句、股價與均線用語切斷先前損益上下文。股價依既有typed price evidence檢核；個人毛損益、淨損益、每股價差則對應成功計算器的gross_profit、net_profit、price_difference，不能從全體數字集合取值。validation_failure保留錯誤類別、欄位文字與拒絕草稿供本機診斷。

@@ -6,6 +6,10 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { readFile, appendFile } from "node:fs/promises";
 import { createStockTools, toolDefinitions } from "./tools.js";
+import {
+  checkReportDraft,
+  validationToolDefinition,
+} from "./report-validation.js";
 
 const context = JSON.parse(await readFile(process.argv[2], "utf8"));
 const tools = createStockTools(context, {
@@ -19,7 +23,7 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: toolDefinitions.map((t) => ({
+  tools: [...toolDefinitions, validationToolDefinition].map((t) => ({
     ...t,
     annotations: {
       readOnlyHint: true,
@@ -30,6 +34,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
   try {
+    if (params.name === validationToolDefinition.name) {
+      const calls = (await readFile(context.audit_path, "utf8"))
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      const result = checkReportDraft(
+        params.arguments,
+        calls,
+        context.snapshot.report,
+        context.user_message,
+      );
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
     return {
       content: [
         {

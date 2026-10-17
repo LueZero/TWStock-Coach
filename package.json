@@ -39,7 +39,7 @@
     "setup": "node scripts/setup_env.js",
     "format": "prettier --write api agent web/src web/index.html web/vite.config.js web/package.json scripts/*.js web/tests/*.test.js package.json compose.yaml",
     "format:check": "prettier --check api agent web/src web/index.html web/vite.config.js web/package.json scripts/*.js web/tests/*.test.js package.json compose.yaml",
-    "verify:db": "node --test tests/integration.database.js",
+    "verify:db": "node --test api/tests/integration.database.js",
     "verify:worker": "node scripts/verify_worker.js",
     "verify:market": "node scripts/verify_market_board.cjs",
     "verify:market-layout": "node scripts/verify_market_layout.cjs",

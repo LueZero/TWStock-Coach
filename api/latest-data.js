@@ -13,7 +13,7 @@ export async function refreshLatestStock(market, symbol) {
     .catch(() => ({ state: "unavailable" }));
   const latest = (
     await rows(
-      "SELECT max(trade_date) AS date FROM bars WHERE market=$1 AND symbol=$2 AND timeframe='1d' AND price_basis='raw' AND is_final",
+      "SELECT max(trade_date) AS date FROM bars WHERE market=$1 AND symbol=$2 AND session='daily_aggregate' AND timeframe='1d' AND price_basis='raw' AND is_final",
       [market, symbol],
     )
   )[0]?.date;
@@ -53,7 +53,7 @@ export async function refreshLatestStock(market, symbol) {
   }
   const current = (
     await rows(
-      "SELECT max(trade_date) AS date FROM bars WHERE market=$1 AND symbol=$2 AND timeframe='1d' AND price_basis='raw' AND is_final",
+      "SELECT max(trade_date) AS date FROM bars WHERE market=$1 AND symbol=$2 AND session='daily_aggregate' AND timeframe='1d' AND price_basis='raw' AND is_final",
       [market, symbol],
     )
   )[0]?.date;

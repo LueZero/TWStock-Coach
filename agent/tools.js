@@ -17,7 +17,7 @@ export const toolDefinitions = [
   {
     name: "calculate_trade_profit",
     description:
-      "依本次股票實際K線或均線價格與使用者明示股數計算每股價差及毛損益。買賣價格只接受本次資料值（四捨五入兩位），股數必須由使用者問題提供。一張等於1000股。未提供費用不計算淨利；結果不是預測或保證。報告提及價差或損益金額前必須呼叫此工具並引用證據ID。",
+      "依本次股票實際K線或均線價格與使用者明示股數計算每股價差及毛損益。買賣價格限本次價格或依商品合法跳檔取最近、向上、向下的調整價；均線參考價可能不能直接下單。股數必須由使用者問題提供，一張等於1000股。未提供費用不計算淨利；結果不是預測或保證。報告提及價差或損益金額前必須呼叫此工具並引用證據ID。",
     inputSchema: {
       type: "object",
       properties: {
@@ -43,7 +43,7 @@ export const toolDefinitions = [
           description:
             "自動模式可自選查詢起日，YYYY-MM-DD；不超過截止日前一年。截止固定，手動期間不可更改。",
         },
-        offset: { type: "integer", minimum: 0, maximum: 320 },
+        offset: { type: "integer", minimum: 0, maximum: 1000 },
         limit: { type: "integer", minimum: 1, maximum: 120 },
       },
       required: ["section"],

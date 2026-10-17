@@ -3,6 +3,8 @@ import { view as finances } from "./fundamentals.js";
 import { view as chips } from "./equity.js";
 import { report as peers } from "./peers.js";
 import { tradingRange } from "./trading.js";
+import { reportBars } from "./report-bars.js";
+import { quoteAt } from "./quote-store.js";
 import {
   assetType,
   institutionObservation,
@@ -67,23 +69,7 @@ export async function buildSnapshot(input) {
     company_name: instrument.name,
     industry: instrument.industry,
   });
-  const snapshots = await rows(
-    `SELECT data FROM (
-    SELECT DISTINCT ON (bar_id) bar_id,revision,data FROM (
-      SELECT id AS bar_id,revision,to_jsonb(b) AS data FROM bars b
-       WHERE market=$1 AND symbol=$2 AND session='daily_aggregate' AND timeframe='1d' AND price_basis='raw' AND received_at<=$3 AND source_time<=$3 AND trade_date<=$4
-      UNION ALL
-      SELECT r.bar_id,r.revision,r.snapshot::jsonb AS data FROM bar_revisions r JOIN bars b ON b.id=r.bar_id
-       WHERE b.market=$1 AND b.symbol=$2 AND b.session='daily_aggregate' AND b.timeframe='1d' AND b.price_basis='raw'
-        AND (r.snapshot->>'received_at')::timestamptz<=$3 AND (r.snapshot->>'source_time')::timestamptz<=$3 AND (r.snapshot->>'trade_date')::date<=$4
-    ) candidates ORDER BY bar_id,revision DESC
-  ) versions ORDER BY (data->>'timestamp')::timestamptz DESC LIMIT 320`,
-    [q.market, q.symbol, q.as_of, q.end],
-  );
-  const bars = snapshots
-    .map((r) => r.data)
-    .filter((b) => b.is_final)
-    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const bars = await reportBars(q);
   const completeEnd = q.end + "T13:30:00+08:00";
   const calendarEnd =
     Date.parse(q.as_of) < Date.parse(completeEnd) ? addDays(q.end, -1) : q.end;
@@ -302,12 +288,7 @@ export async function buildSnapshot(input) {
     `SELECT DISTINCT ON(source_key) id,source_key,received_at,last_seen_at,data FROM market_board_snapshots WHERE received_at<=$1 AND (source_key IN ('quotes:day','quotes:night') OR source_key LIKE 'index-month:%' OR source_key LIKE 'market-chips:%' OR source_key LIKE $2) ORDER BY source_key,received_at DESC,id DESC`,
     [q.as_of, `media:%:${q.market}:${q.symbol}:%`],
   );
-  const quote = (
-    await rows(
-      "SELECT id,source_time,received_at,data FROM quote_snapshots WHERE market=$1 AND symbol=$2 AND received_at<=$3 AND source_time<=$3 ORDER BY source_time DESC LIMIT 1",
-      [q.market, q.symbol, q.as_of],
-    )
-  )[0];
+  const quote = await quoteAt(q.market, q.symbol, q.as_of);
   if (quote)
     evidence.push({
       id: "quote:snapshot",

@@ -161,6 +161,36 @@ test("模型啟動前整理所有面向，完整區間K線分頁合併，缺資�
   assert.match(prompt, /個股分析報告模板/);
   assert.doesNotMatch(prompt, /read_analysis_skill/);
 });
+
+test("資料清單區分部分財務來源、長均線暖機不足及無有效同業", async () => {
+  const snapshot = fixtures();
+  snapshot.report.evidence.push(
+    {
+      id: "financial:coverage",
+      category: "financial",
+      rows: [
+        { dataset: "income", status: "available" },
+        { dataset: "cash", status: "no_data" },
+      ],
+    },
+    {
+      id: "peers:comparison",
+      category: "peers",
+      comparable_count: 0,
+      rows: [{ selected: true, available: 1 }],
+    },
+  );
+  const value = await prepareReportInput(
+    { api_url: "http://localhost:8000", scope, snapshot },
+    { fetcher },
+  );
+  const manifest = Object.fromEntries(
+    value.packet.manifest.map((m) => [m.section, m.status]),
+  );
+  assert.equal(manifest.financial, "partial");
+  assert.equal(manifest.technical, "partial");
+  assert.equal(manifest.peers, "missing");
+});
 test("報告不注入本金、風險、費用與持倉；保留技術價位條件", () => {
   const validated = validateAssistantInput({
     ...scope,

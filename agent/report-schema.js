@@ -1,3 +1,5 @@
+import { stockPriceValues } from "./price-evidence.js";
+
 export const explanationSchema = {
   type: "object",
   additionalProperties: false,
@@ -219,7 +221,9 @@ export function validateExplanation(value, report) {
     )
       throw Error("AI引用未實際查詢的分析期間");
   }
-  const allowed = new Set();
+  const allowed = new Set(),
+    prices = stockPriceValues(report),
+    orderPrices = stockPriceValues(report, [], { executable: true });
   const collect = (v) => {
     if (typeof v === "number" && Number.isFinite(v)) {
       allowed.add(String(v));
@@ -276,18 +280,35 @@ export function validateExplanation(value, report) {
       throw Error("AI回覆含未驗證獲利承諾");
     // Financial prose commonly expresses a negative result as 「毛損失1400元」.
     // Normalize explicit loss wording, without changing stop prices or EPS signs.
-    const amounts = s.replace(
-      /((?:毛損失|毛虧損|虧損|損失)\s*)(\d[\d,]*(?:\.\d+)?)\s*元/g,
-      "$1負$2元",
-    );
+    const amounts = s
+      .replace(
+        /((?:毛損失|毛虧損|虧損|損失)\s*)(\d[\d,]*(?:\.\d+)?)\s*元/g,
+        "$1負$2元",
+      )
+      .replace(
+        /\b\d{4}-\d{2}-\d{2}\b|\b(?:0?[1-9]|1[0-2])[\/／](?:0?[1-9]|[12]\d|3[01])\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g,
+        "（日期／時間）",
+      );
     for (const m of amounts.matchAll(
-      /(?:NT\$|新台幣|價格|價位|停損|停利|目標價|支撐|壓力)\s*[：:為在約]?\s*([-−﹣－＋+負]?[\d,]+(?:\.\d+)?)\s*(?:元)?|([-−﹣－＋+負]?[\d,]+(?:\.\d+)?)\s*元/g,
+      /(?:價格|價位|停損|停利|目標價|支撐|壓力|買價|賣價|買入價|賣出價|買進價|收盤價|開盤價|進場價|出場價|觀察價|優先價|承接價|買入|買進|賣出)\s*[：:為在約]?\s*([-−﹣－＋+負]?[\d,]+(?:\.\d+)?)\s*(?:元)?(?![\d.日週月季年根期分張股倍%])|(?:NT\$|新台幣)\s*([-−﹣－＋+負]?[\d,]+(?:\.\d+)?)|([-−﹣－＋+負]?[\d,]+(?:\.\d+)?)\s*元/g,
     ))
       if (
-        !allowed.has(
+        !(
+          /^(?:買價|賣價|買入|賣出|買進|進場價|出場價|承接價)/.test(m[0]) ||
+          /(?:買進|買入|賣出|委託|進場|出場)\s*$/.test(
+            amounts.slice(Math.max(0, m.index - 8), m.index),
+          ) ||
+          /^\s*(?:買入|買進|賣出|買|賣)(?:[，、；。\s]|$)/.test(
+            amounts.slice(m.index + m[0].length),
+          )
+            ? orderPrices
+            : m[1]
+              ? prices
+              : allowed
+        ).has(
           String(
             Number(
-              (m[1] || m[2])
+              (m[1] || m[2] || m[3])
                 .replaceAll(",", "")
                 .replaceAll("−", "-")
                 .replaceAll("﹣", "-")

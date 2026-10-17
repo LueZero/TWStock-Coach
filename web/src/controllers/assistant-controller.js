@@ -245,8 +245,8 @@ async function poll(id, v, stock) {
   try {
     const value = await api("/reports/" + id);
     const job = value.run;
-    reportRun = job;
     if (v !== version || stock !== key()) return;
+    reportRun = job;
     if (job.status === "running") {
       for (const event of value.progress_events || []) progressEvent(event);
       status(
@@ -363,8 +363,8 @@ async function send() {
   beginProgress();
   try {
     const data = await api(`/reports/${report.id}/messages`, { message });
-    resetProgress([], data.run);
     if (v !== version || stock !== key()) return;
+    resetProgress([], data.run);
     messages.push({ role: "user", content: { text: message } });
     renderMessages(messages, report?.evidence);
     $("assistantMessage").value = "";

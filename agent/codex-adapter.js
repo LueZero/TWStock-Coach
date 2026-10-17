@@ -20,7 +20,7 @@ const reportTemplate = await readFile(
   new URL("./templates/report-template.md", import.meta.url),
   "utf8",
 );
-export const PROMPT_VERSION = "stock-report-v8";
+export const PROMPT_VERSION = "stock-report-v9";
 export function codexEnvironment() {
   const allowed = [
     "PATH",

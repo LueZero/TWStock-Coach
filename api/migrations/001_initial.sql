@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS fundamental_snapshots(id serial PRIMARY KEY,market va
 CREATE UNIQUE INDEX IF NOT EXISTS fundamental_revision_key ON fundamental_snapshots(market,symbol,dataset,revision);
 CREATE INDEX IF NOT EXISTS ix_fundamental_lookup ON fundamental_snapshots(market,symbol,received_at,id);
 CREATE TABLE IF NOT EXISTS quote_snapshots(id serial PRIMARY KEY,market varchar(8) NOT NULL,symbol varchar(16) NOT NULL,source_time timestamptz NOT NULL,trade_date date NOT NULL,received_at timestamptz NOT NULL,data json NOT NULL,CONSTRAINT quote_key UNIQUE(market,symbol,source_time));
+CREATE TABLE IF NOT EXISTS quote_revisions(id bigserial PRIMARY KEY,snapshot_id integer NOT NULL,replaced_at timestamptz NOT NULL,snapshot jsonb NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_quote_revisions_snapshot ON quote_revisions(snapshot_id);
 INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;
 ALTER TABLE job_runs ADD COLUMN IF NOT EXISTS payload jsonb NOT NULL DEFAULT '{}';
 ALTER TABLE job_runs ADD COLUMN IF NOT EXISTS heartbeat_at timestamptz;

@@ -625,7 +625,8 @@ h1 {
   line-height: 1.6;
   margin: 3px 0;
 }
-.source-status.warning {
+.source-status.warning,
+.range-status.warning {
   color: #e7be70;
 }
 .view-bar {

@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { stockPriceValues } from "./price-evidence.js";
 
 export function statedShares(message = "") {
   const quantities = new Set();
@@ -33,25 +34,13 @@ export function statedShares(message = "") {
 
 // Operands must come from this run's stock prices, not arbitrary AI targets.
 export function calculateTrade(args, snapshot, message) {
-  const prices = new Set();
-  const add = (v) => {
-    if (typeof v === "number" && Number.isFinite(v) && v > 0)
-      prices.add(new Decimal(v).toDecimalPlaces(2).toString());
-  };
   const report = snapshot.report;
-  for (const bar of snapshot.input.bars || [])
-    for (const k of ["open", "high", "low", "close"]) add(bar[k]);
-  for (const [k, v] of Object.entries(report.metrics || {}))
-    if (/^ma\d+$|^bb_(upper|lower)|^prior_high\d+$/.test(k)) add(v);
-  for (const e of report.evidence || [])
-    if (e.id === "price:last" || e.id === "quote:snapshot") {
-      add(e.value);
-      for (const k of ["price", "last", "open", "high", "low", "close"])
-        add(e.data?.[k]);
-    }
+  const prices = stockPriceValues(report, snapshot.input.bars || [], {
+    executable: true,
+  });
   for (const k of ["buy_price", "sell_price"])
     if (!prices.has(String(args[k])))
-      throw Error("試算買賣價須引用本次股票K線或均線等價格，不能自行編造");
+      throw Error("試算買賣價須引用本次股票價格或其合法跳檔調整，不能自行編造");
   if (!statedShares(message).has(args.shares))
     throw Error("試算股數須由使用者本次問題提供，例如一張或1000股");
   const delta = new Decimal(args.sell_price).minus(args.buy_price);
@@ -63,6 +52,8 @@ export function calculateTrade(args, snapshot, message) {
     gross_profit: delta.times(args.shares).toNumber(),
     net_profit: null,
     formula: "毛損益＝（賣價－買價）×股數",
+    price_rule:
+      "來源價格或價格指標依商品合法升降單位取最近、向上或向下調整；參考均線不一定能直接作為委託價格。",
     note: "條件式試算，未扣手續費與交易稅，不是預測、保證獲利或已成交損益；費用未提供不計算淨利。",
   };
 }

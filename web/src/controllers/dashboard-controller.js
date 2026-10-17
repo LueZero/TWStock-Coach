@@ -37,7 +37,8 @@ import { mediaChanged } from "./media-controller.js";
 
 let searchTimer = null,
   searchVersion = 0,
-  searchResults = [];
+  searchResults = [],
+  historyRequest = 0;
 
 function saveFavorites() {
   try {
@@ -50,6 +51,8 @@ function saveFavorites() {
 }
 
 async function selectStock(stock) {
+  searchVersion++;
+  state.rangeRequest++;
   state.controller.abort();
   state.controller = new AbortController();
   state.generation++;
@@ -174,6 +177,7 @@ async function refreshQuote(gen = state.generation, manual = false) {
     if (isMinute() && state.market?.monitor_allowed) await fetchHistory(gen);
   } catch (error) {
     if (error.name === "AbortError" || gen !== state.generation) return;
+    if (state.quote) state.quote = { ...state.quote, state: "unavailable" };
     $("quoteStatus").textContent = state.quote
       ? `無法更新行情：${error.message}。畫面為上次快照，並非新報價。`
       : `無法取得行情：${error.message}`;
@@ -197,8 +201,9 @@ function dailyUrl() {
 }
 
 async function fetchHistory(gen) {
+  const request = ++historyRequest;
   const result = await json(dailyUrl());
-  if (gen !== state.generation) return;
+  if (gen !== state.generation || request !== historyRequest) return;
   state.rows = result.data;
   updateRangeStatus();
   const selectedStamp = state.selected?.timestamp;
@@ -504,10 +509,13 @@ export function initDashboardController() {
     event.preventDefault();
     const q = $("stockInput").value.trim();
     if (!q) return;
+    clearTimeout(searchTimer);
+    const version = ++searchVersion;
     try {
-      const items = await (
-        await fetch("/api/search?q=" + encodeURIComponent(q))
-      ).json();
+      const response = await fetch("/api/search?q=" + encodeURIComponent(q));
+      if (!response.ok) throw Error();
+      const items = await response.json();
+      if (version !== searchVersion) return;
       const chosen =
         items.find((s) => s.symbol === q) ||
         items.find((s) => s.name === q) ||
@@ -518,7 +526,8 @@ export function initDashboardController() {
       }
       selectStock(chosen);
     } catch {
-      message("股票搜尋暫時無法使用，請稍後再試。");
+      if (version === searchVersion)
+        message("股票搜尋暫時無法使用，請稍後再試。");
     }
   };
   $("stockInput").onkeydown = (event) => {

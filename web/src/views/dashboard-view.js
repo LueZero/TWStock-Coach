@@ -1,4 +1,5 @@
 import { renderOrderbook } from "./orderbook-view.js";
+import { observedQuote } from "../models/quote-freshness.js";
 import {
   state,
   completed,
@@ -159,7 +160,7 @@ function renderQuote() {
     renderHistoricalSummary();
     return;
   }
-  const q = state.quote;
+  const q = observedQuote(state.quote);
   if (!q) {
     emptyQuote();
     renderBook();
@@ -178,13 +179,8 @@ function renderQuote() {
   $("tradeDate").textContent = q.trade_date;
   $("volumeTitle").textContent =
     `累計成交量（${$("volumeUnit").value === "lots" ? "張" : "股"}）`;
-  $("quoteStatus").textContent =
-    `${q.state_label} · ${q.source_label} · 五檔來源時間 ${localTime(q.source_time)} · ${q.state === "unavailable" ? "更新失敗，保留上次資料" : `距來源時間 ${fmt(q.age_seconds / 60)} 分鐘`}。`;
-  $("quoteStatus").className =
-    "source-status" +
-    (["previous_session", "delayed", "unavailable"].includes(q.state)
-      ? " warning"
-      : "");
+  renderQuoteSource(q);
+  if (state.range) updateRangeStatus();
   if (q.name) {
     $("stockName").textContent = q.name;
     state.stock.name = q.name;
@@ -193,8 +189,18 @@ function renderQuote() {
   renderAnalysis();
 }
 
+function renderQuoteSource(q) {
+  $("quoteStatus").textContent =
+    `${q.state_label} · ${q.source_label} · 五檔來源時間 ${localTime(q.source_time)} · ${q.state === "unavailable" ? "更新失敗，保留上次資料" : `距來源時間 ${fmt(q.age_seconds / 60)} 分鐘`}。`;
+  $("quoteStatus").className =
+    "source-status" +
+    (["previous_session", "delayed", "unavailable"].includes(q.state)
+      ? " warning"
+      : "");
+}
+
 function renderBook() {
-  const q = state.mode === "live" ? state.quote : null;
+  const q = state.mode === "live" ? observedQuote(state.quote) : null;
   $("bookRows").replaceChildren();
   $("bookBadge").textContent =
     state.mode === "history"
@@ -1092,9 +1098,27 @@ function updateRangeStatus() {
     (first
       ? ` · 實際資料 ${isMinute() ? localTime(first.timestamp) : first.trade_date} 至 ${isMinute() ? localTime(last.timestamp) : last.trade_date}`
       : " · 尚無該範圍資料，請查看載入狀態／來源權限。");
+  const differentDate =
+    state.mode === "live" &&
+    state.resolution === "1d" &&
+    last &&
+    state.quote?.trade_date > last.trade_date;
+  if (differentDate)
+    $("rangeStatus").textContent += state.market?.monitor_allowed
+      ? ` · 盤中行情 ${state.quote.trade_date}；指標依 ${last.trade_date} 完成日K，未混用盤中價。`
+      : ` · 注意：行情 ${state.quote.trade_date}，日K僅到 ${last.trade_date}；技術指標尚未更新至該交易日。`;
+  $("rangeStatus").classList.toggle(
+    "warning",
+    !!differentDate && !state.market?.monitor_allowed,
+  );
 }
 
 function renderMonitorStatus() {
+  const q = observedQuote(state.quote);
+  if (state.mode === "live" && q) {
+    renderQuoteSource(q);
+    if ($("bookBadge").textContent !== q.state_label) renderBook();
+  }
   $("connectionState").textContent = !state.market
     ? "確認市場"
     : !state.market.monitor_allowed
@@ -1107,10 +1131,7 @@ function renderMonitorStatus() {
         (state.market.is_trading_day ? "今日已收盤" : "今日休市")
       : !$("autoRefresh").checked
         ? "手動更新"
-        : state.quote &&
-            ["previous_session", "delayed", "unavailable"].includes(
-              state.quote.state,
-            )
+        : q && ["previous_session", "delayed", "unavailable"].includes(q.state)
           ? "行情延遲"
           : "盤中監控";
   document
@@ -1120,7 +1141,7 @@ function renderMonitorStatus() {
       !!(
         state.market?.monitor_allowed &&
         $("autoRefresh").checked &&
-        state.quote?.state === "snapshot"
+        q?.state === "snapshot"
       ),
     );
   const selected = $("autoRefresh").checked;
@@ -1130,11 +1151,9 @@ function renderMonitorStatus() {
       ? "確認交易日與時段中…"
       : !state.market.monitor_allowed
         ? `已勾選監控，暫停更新：${state.market.reason}。下一交易時段自動恢復。`
-        : state.quote &&
-            (state.quote.trade_date !== taipeiDay() ||
-              ["previous_session", "delayed", "unavailable"].includes(
-                state.quote.state,
-              ))
+        : q &&
+            (q.trade_date !== taipeiDay() ||
+              ["previous_session", "delayed", "unavailable"].includes(q.state))
           ? "交易時段內，但行情延遲／非今日資料；持續檢查，畫面不視為即時成交。"
           : "盤中監控已開啟，按設定間隔更新行情、五檔與已接入的分鐘 K。";
 }

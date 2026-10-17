@@ -10,6 +10,7 @@ import {
 } from "./lib.js";
 import { rows, transaction } from "./db.js";
 import { FinMind } from "./providers.js";
+import { saveQuote } from "./quote-store.js";
 const number = (v) => {
     const n = num(v);
     return n != null && n >= 0 ? n : null;
@@ -133,17 +134,7 @@ export async function getQuote(market, symbol) {
       const data = parseQuote(body.msgArray[0], market, symbol);
       await transaction(async (client) => {
         await client.query("SELECT pg_advisory_xact_lock(78241002)");
-        await client.query(
-          "INSERT INTO quote_snapshots(market,symbol,source_time,trade_date,received_at,data) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(market,symbol,source_time) DO UPDATE SET received_at=EXCLUDED.received_at,data=EXCLUDED.data",
-          [
-            market,
-            symbol,
-            data.source_time,
-            data.trade_date,
-            data.received_at,
-            JSON.stringify(data),
-          ],
-        );
+        await saveQuote(client, data);
       });
       quoteCache.set(k, { at: Date.now(), data });
       if (quoteCache.size > 200)

@@ -161,7 +161,9 @@ export async function prepareReportInput(
                     )
                   : section === "financial"
                     ? !result.evidence.some((e) => e.value != null)
-                    : !result.evidence.length;
+                    : section === "peers"
+                      ? !result.evidence.some((e) => e.comparable_count > 0)
+                      : !result.evidence.length;
       const hasMore = (value) =>
         value &&
         typeof value === "object" &&
@@ -171,6 +173,13 @@ export async function prepareReportInput(
           ));
       const truncated =
         result.evidence.some((e) => e.rows_has_more || e.sample_truncated) ||
+        (section === "financial" &&
+          result.evidence.some(
+            (e) =>
+              e.id.endsWith("financial:coverage") &&
+              e.rows?.some((r) => r.status !== "available"),
+          )) ||
+        (section === "technical" && data.metrics?.ma240 == null) ||
         hasMore(data.workspace) ||
         data.coverage?.some((c) => c.state === "missing") ||
         data.source_coverage?.some((c) => c.status !== "available");

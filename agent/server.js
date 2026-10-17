@@ -209,6 +209,9 @@ export function createAgent({
       const scenario = fresh.find((c) => c.arguments.section === "scenarios");
       const validationReport = calls.length
         ? {
+            asset:
+              fresh.find((c) => c.arguments.section === "overview")?.data.meta
+                ?.asset || doc.report.meta.asset,
             evidence: fresh.flatMap((c) => [
               { id: c.evidence_id, data: c.data },
               ...(c.evidence || []),

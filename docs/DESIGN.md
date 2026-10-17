@@ -1,6 +1,6 @@
 # 架構設計
 
-更新：2026-10-11，版本1.2.0。平台後端使用 Node.js ES modules；AI 分析另呼叫 Codex CLI，不依賴 Python 後端。前端使用 Vite、Bootstrap 與 ES modules MVC；開發服務及正式靜態網站均獨立於API。Fastify不提供看盤前端。
+更新：2026-10-17，版本1.2.0。平台後端使用 Node.js ES modules；AI 分析另呼叫 Codex CLI，不依賴 Python 後端。前端使用 Vite、Bootstrap 與 ES modules MVC；開發服務及正式靜態網站均獨立於API。Fastify不提供看盤前端。
 
 ```mermaid
 flowchart LR
@@ -172,7 +172,7 @@ docker compose exec -T api node -e "fetch('http://localhost:8000/api/jobs').then
 
 `verify:worker` 唯讀核對目前schema有1個排程鎖持有者、running心跳不超過120秒，列出待處理數量與等待時間；沒有running工作時只核對鎖。這是維護檢查，不是獨立的worker健康端點，也不代表外部來源必定可用。
 
-`verify:db` 建立專用隨機 `stock_audit_*` schema，測試完成後只刪除此schema，不清空既有資料表；執行者需有CREATE／DROP SCHEMA權限。容器測試使用既有Compose資料庫連線，本機若自行執行需提供有效DATABASE_URL，Compose的PostgreSQL預設未公開本機埠。中斷測試可能留下測試schema，應核對名稱與內容後再由管理者清理。
+`verify:db` 使用PostgreSQL交易內的暫存表驗證完整年度指標暖機、截止前K線修訂、行情首次接收及同時間戳內容修訂。結束即ROLLBACK並關閉連線，不修改正式股票資料，也不建立永久測試schema。容器測試使用Compose資料庫連線；本機執行須提供有效DATABASE_URL，Compose的PostgreSQL預設未公開本機埠。
 
 依賴更新流程：修改套件、更新package-lock、npm audit、npm test、隔離資料庫測試、瀏覽器驗證，再重建映像。映像digest需要定期更新，不能把固定版本視為永久維護完成。
 
@@ -227,7 +227,7 @@ Compose 僅定義 `postgres`、`api`、`scheduler`，不包含 AI Agent 或 Code
 | npm test                                                       | 現行 Node.js／前端單元測試；Agent 使用暫存目錄及測試 CLI    |
 | npm run format:check；npm run build                            | 程式格式與 Vite 建置                                        |
 | npm run verify                                                 | 運行中的 API、已存圖表與前後端隔離；WEB_BASE_URL 可加驗前端 |
-| docker compose exec -T api npm run verify:db                   | 隨機隔離 schema 的資料庫整合；不清空正式股票表              |
+| docker compose exec -T api npm run verify:db                   | 交易內暫存表的資料庫整合；不修改正式股票表              |
 | docker compose exec -T api npm run verify:worker               | 股票排程鎖及 running 心跳；不是 AI worker                   |
 | npm run verify:browser                                         | 個股互動與響應式；需 Vite／Chrome                           |
 | npm run verify:chips                                           | 九個籌碼子頁、股張換算、區間及彈窗                          |
@@ -246,4 +246,8 @@ scripts/setup_env.js 與 setup_assistant.js 是環境設定工具；verify_* 是
 
 ### AI 價差與損益驗證
 
-`calculate_trade_profit`是本地唯讀MCP工具，使用decimal.js核算（賣價－買價）×股數。價格限定本次股票K線或價格指標（四捨五入兩位），股數限定本次使用者明示張／股，不接受AI任意價格或預設部位。計算回應和工具證據沿用本次截止與查詢稽核；損益文字只有引用成功計算才進入報告。未提供費用不計算淨利。價位驗證識別「負0.23元」、全形負號及「毛損失1400元」的負數語意；失敗時保留validation_failure供本機JSON診斷，但未驗證草稿不當作正式AI結論。前端終止狀態明示失敗／取消／中斷，不繼續顯示整理中。
+`calculate_trade_profit`是本地唯讀MCP工具，使用decimal.js核算（賣價－買價）×股數。價格限定本次個股K線、快照、情境價或價格指標按商品合法跳檔調整，股數限定本次使用者明示張／股，不接受AI任意價格或預設部位。計算回應和工具證據沿用本次截止與查詢稽核；損益文字只有引用成功計算才進入報告。未提供費用不計算淨利。價位驗證識別「負0.23元」、全形負號及「毛損失1400元」的負數語意；失敗時保留validation_failure供本機JSON診斷，但未驗證草稿不當作正式AI結論。前端終止狀態明示失敗／取消／中斷，不繼續顯示整理中。
+
+### 行情快照修訂
+
+相同market／symbol／source_time的公開行情，內容相同僅重複觀察時保留首次received_at；內容變動時先將原版本保存於quote_revisions，再更新正式快照。歷史研究從正式版本與修訂版本中選截止前已接收且行情時間不晚於截止者。此機制只保護升級後取得的修訂；升級前已被覆寫的內容不能自動還原，舊報告檔案不回寫。

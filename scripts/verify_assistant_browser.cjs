@@ -69,7 +69,7 @@ async function until(expression, timeout = 60000) {
     await pause(300);
   }
   const diagnostics = await evaluate(
-    'JSON.stringify({financialStatus:document.getElementById("financialStatus")?.textContent,historyStatus:document.getElementById("historyStatus")?.textContent})',
+    'JSON.stringify({symbol:state.stock.symbol,financialStatus:document.getElementById("financialStatus")?.textContent,historyStatus:document.getElementById("historyStatus")?.textContent,assistantStatus:document.getElementById("assistantStatus")?.textContent,reportSelection:document.getElementById("assistantHistory")?.value,reportOptions:Array.from(document.getElementById("assistantHistory")?.options||[]).map(o=>o.value),reportText:document.getElementById("assistantContent")?.textContent.slice(0,300)})',
   );
   throw Error(
     "UI wait failed: " +
@@ -140,10 +140,35 @@ async function until(expression, timeout = 60000) {
       fs.readFileSync(path.join(scratch, "assistant-report-id.json"), "utf8"),
     );
     const symbol = saved.symbol || "2409";
+    // Deliberately reverse the search response order. An older request must not
+    // replace the stock selected by the user's later submission.
+    assert.equal(
+      await evaluate(`(async () => {
+      const original = globalThis.fetch;
+      globalThis.fetch = async (url, options) => {
+        const match = /^\\/api\\/search\\?q=(2330|2883)$/.exec(String(url));
+        if (!match) return original(url, options);
+        const code = match[1];
+        await new Promise(resolve => setTimeout(resolve, code === '2330' ? 350 : 10));
+        return new Response(JSON.stringify([{ market:'TWSE',symbol:code,name:code,industry:'' }]), {headers:{'Content-Type':'application/json'}});
+      };
+      try {
+        const form=document.getElementById('searchForm'), input=document.getElementById('stockInput');
+        input.value='2330'; const older=form.onsubmit({preventDefault(){}});
+        input.value='2883'; const newer=form.onsubmit({preventDefault(){}});
+        await Promise.all([older,newer]);
+        return state.stock.symbol;
+      } finally { globalThis.fetch=original; }
+    })()`),
+      "2883",
+    );
+    const stockGeneration = await evaluate("state.generation");
     await evaluate(
       `document.getElementById('stockInput').value=${JSON.stringify(symbol)};document.getElementById('searchForm').requestSubmit()`,
     );
-    await until(`state.stock.symbol===${JSON.stringify(symbol)}`);
+    await until(
+      `state.generation>${stockGeneration} && state.stock.symbol===${JSON.stringify(symbol)}`,
+    );
     if (saved.expected_day) {
       await until(
         `state.rows.at(-1)?.trade_date===${JSON.stringify(saved.expected_day)} && state.quote?.trade_date===${JSON.stringify(saved.expected_day)}`,
@@ -410,6 +435,7 @@ async function until(expression, timeout = 60000) {
         historicalBar: true,
         chatCollapse: true,
         stockIsolation: true,
+        searchRace: true,
         screenshots: 2,
       }),
     );

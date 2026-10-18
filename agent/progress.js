@@ -39,6 +39,17 @@ export function cliActivity(event) {
     const args = event.item.arguments || {},
       label =
         labels[args.section] ||
+        {
+          search_stocks: "辨識股票名稱與代號",
+          read_research_skill: `載入研究技能 ${args.name || ""}`,
+          list_research_skills: "研究技能清單",
+          get_market_data: "大盤市場資訊",
+        }[event.item.tool] ||
+        {
+          show_stock_chart: "日K與技術訊號圖",
+          get_stock_quote: "個股行情與五檔快照",
+          save_research_report: "保存研究報告",
+        }[event.item.tool] ||
         (event.item.tool === "calculate_trade_profit"
           ? "價差與毛損益試算"
           : event.item.tool === "get_financial_history"

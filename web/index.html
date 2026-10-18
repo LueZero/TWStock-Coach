@@ -47,7 +47,7 @@
     </header>
     <nav class="workspace-menu mobile-page-menu" aria-label="主要頁面">
       <button data-app-page="assistant" aria-pressed="false">
-        <span>✦</span> AI 分析報告
+        <span>✦</span> 股票助手
       </button>
       <button data-app-page="stock" aria-pressed="true">
         <span>◈</span> 個股看盤<small>STOCK RESEARCH</small>
@@ -65,7 +65,7 @@
         <div class="sidebar-caption">WORKSPACE</div>
         <nav class="workspace-menu sidebar-page-menu" aria-label="主要頁面">
           <button data-app-page="assistant" aria-pressed="false">
-            <span>✦</span> AI 分析報告
+            <span>✦</span> 股票助手
           </button>
           <button data-app-page="stock" aria-pressed="true">
             <span>◈</span> 個股看盤
@@ -77,7 +77,7 @@
             <span>▦</span> 股票計算機
           </button>
         </nav>
-        <div class="section-title">
+        <div class="section-title stock-selection-only">
           自選觀察 <span id="favoriteCount" class="badge"></span>
         </div>
         <div id="favorites" class="favorites"></div>
@@ -1269,172 +1269,151 @@
               data-view-panel="assistant"
               hidden
             >
-              <div class="assistant-heading">
+              <header class="chat-page-heading">
                 <div>
-                  <span class="panel-kicker">AI RESEARCH WORKSPACE</span>
-                  <h2 id="assistantTitle">個股分析報告</h2>
-                  <p id="assistantMeta" class="subtle">
-                    選取股票，建立可追溯的分析報告。
-                  </p>
+                  <span class="panel-kicker">CODEX RESEARCH CHAT</span>
+                  <h2>股票助手</h2>
+                  <p>從問題開始，讓 AI 挑選資料、解釋趨勢與整理研究。</p>
                 </div>
-                <div class="assistant-actions">
-                  <button id="assistantGenerate" class="primary" type="button">
-                    產生新報告</button
-                  ><button
-                    id="assistantToggleChat"
-                    class="quiet"
-                    type="button"
-                    aria-expanded="true"
-                  >
-                    收合聊天
-                  </button>
-                </div>
-              </div>
-              <div class="assistant-context">
-                <label
-                  >分析視角<select id="assistantMode">
-                    <option value="latest">最新波段分析</option>
-                    <option value="historical">選取日K當時可得資料</option>
-                  </select></label
+                <span id="assistantServiceBadge" class="chat-service"
+                  >確認連線</span
                 >
-                <details class="assistant-range-settings">
-                  <summary id="assistantRangeSummary">資料期間 · 自動</summary>
-                  <label
-                    >期間選擇<select id="assistantRangeMode">
-                      <option value="auto">AI依問題選擇與補查</option>
-                      <option value="manual">指定分析起日</option>
-                    </select></label
-                  >
-                  <label id="assistantStartLabel" hidden
-                    >分析起日<input id="assistantStart" type="date"
-                  /></label>
-                  <p>
-                    先提供近期資料；AI可依問題補查截止日前一年內資料。歷史視角維持當時截止。
-                  </p>
-                </details>
-                <label
-                  >已存報告<select id="assistantHistory">
-                    <option value="">選擇報告版本</option>
-                  </select></label
-                >
-              </div>
-              <p
-                id="assistantStatus"
-                class="assistant-status"
-                role="status"
-                aria-live="polite"
-              >
-                正在確認助手服務…
-              </p>
-              <section
-                id="assistantProgress"
-                class="assistant-progress"
-                hidden
-                aria-label="AI分析執行狀態"
-              >
-                <div class="assistant-progress-heading">
-                  <strong id="assistantProgressStage">準備分析</strong
-                  ><span id="assistantProgressConnection">連線中</span
-                  ><span id="assistantProgressTime">已執行 0 秒</span>
-                </div>
-                <p id="assistantProgressLatest" aria-live="polite">
-                  等待分析開始
-                </p>
-                <details>
-                  <summary>查看執行活動</summary>
-                  <ol id="assistantProgressEvents"></ol>
-                </details>
-              </section>
-              <form id="assistantLogin" class="assistant-login">
+              </header>
+              <form id="assistantLogin" class="chat-login" hidden>
                 <label
                   >平台存取密碼<input
                     id="assistantAccessKey"
                     type="password"
                     autocomplete="off"
                     required
-                    placeholder="填入 .env 的 ASSISTANT_ACCESS_KEY" /></label
-                ><button type="submit" class="quiet">解鎖助手</button
-                ><span
-                  >使用 .env 的 ASSISTANT_ACCESS_KEY 解鎖；Codex 使用已登入的
-                  ChatGPT 訂閱帳號。</span
-                >
+                    placeholder="ASSISTANT_ACCESS_KEY"
+                /></label>
+                <button type="submit" class="primary">解鎖助手</button
+                ><small>Codex 使用本機已登入的 ChatGPT 訂閱帳號。</small>
               </form>
-              <div class="assistant-workspace">
-                <div class="assistant-report">
-                  <nav class="assistant-tabs" aria-label="分析報告內容">
-                    <button data-report-tab="summary" aria-pressed="true">
-                      重點摘要</button
-                    ><button data-report-tab="plan">進出場計畫</button
-                    ><button data-report-tab="evidence">分析依據</button
-                    ><button data-report-tab="quality">資料品質</button
-                    ><button data-report-tab="chart">K 線引導</button>
-                  </nav>
-                  <div id="assistantContent" class="assistant-content">
-                    <div class="assistant-welcome">
-                      <span>✦</span>
-                      <h3>看懂依據，再判斷時機</h3>
-                      <p>
-                        報告結合完成日
-                        K、財務、籌碼、同業、新聞與已保存的大盤資料。先告訴你目前狀態，再說需要等待什麼條件。
-                      </p>
-                      <p>缺少資料會直接說明；AI 不保證獲利，也不替你下單。</p>
-                    </div>
-                  </div>
-                </div>
-                <aside id="assistantChat" class="assistant-chat">
-                  <div class="assistant-chat-heading">
-                    <h3>看盤助手</h3>
-                    <span id="assistantServiceBadge">確認連線</span>
-                  </div>
-                  <div
-                    id="assistantMessages"
-                    class="assistant-messages"
-                    role="log"
-                    aria-label="看盤助手對話"
-                  ></div>
-                  <div class="assistant-prompts">
-                    <button
-                      type="button"
-                      data-assistant-question="現在適合進場嗎？有哪些條件尚未確認？"
+              <div class="chat-shell">
+                <details id="chatSessionDrawer" class="chat-sidebar" open>
+                  <summary>
+                    我的對話 <span id="chatSessionCount">0</span>
+                  </summary>
+                  <div class="chat-new-session">
+                    <strong>不綁定股票，直接描述問題</strong>
+                    <label
+                      >研究視角<select id="chatNewMode">
+                        <option value="latest">最新資料，每次提問更新</option>
+                        <option value="historical">固定歷史截止</option>
+                      </select></label
                     >
-                      進場時機</button
-                    ><button
-                      type="button"
-                      data-assistant-question="如果已持有，什麼情況需要檢查續抱或退出？"
-                    >
-                      出場觀察</button
-                    ><button
-                      type="button"
-                      data-assistant-question="請說明大盤與籌碼目前如何支持或反對這份計畫，缺資料請直接說。"
-                    >
-                      大盤與籌碼
+                    <label id="chatCutoffLabel" hidden
+                      >歷史日期<input id="chatNewCutoff" type="date"
+                    /></label>
+                    <button id="chatNewSession" class="primary" type="button">
+                      ＋ 新增對話
                     </button>
                   </div>
-                  <form id="assistantMessageForm">
-                    <label class="visually-hidden" for="assistantMessage"
-                      >向看盤助手提問</label
-                    ><textarea
-                      id="assistantMessage"
-                      maxlength="2000"
-                      rows="3"
-                      placeholder="例如：我還沒買，該等待什麼訊號？如需個人分析，可補充本金、持股與成本。"
-                    ></textarea>
+                  <nav id="chatSessionList" aria-label="已存對話"></nav>
+                </details>
+                <div class="chat-thread">
+                  <header class="chat-thread-heading">
                     <div>
-                      <small>訊息與分析資料會送至 AI；持倉資料可選填。</small
-                      ><button
-                        id="assistantCancel"
+                      <h3 id="chatTitle">開始一段股票研究</h3>
+                      <p id="chatScope">
+                        每段 Session 獨立保存，可隨時回來接著問。
+                      </p>
+                    </div>
+                    <div class="chat-thread-actions">
+                      <button
+                        id="chatRename"
                         class="quiet"
                         type="button"
-                        hidden
+                        disabled
                       >
-                        取消</button
-                      ><button id="assistantSend" class="primary" type="submit">
-                        送出
+                        重新命名</button
+                      ><a id="chatDownload" class="quiet" hidden>匯出對話</a>
+                    </div>
+                  </header>
+                  <div
+                    id="chatMessages"
+                    class="chat-messages"
+                    role="log"
+                    aria-label="AI看盤對話"
+                    aria-live="polite"
+                  ></div>
+                  <div id="chatActivity" class="chat-activity" hidden>
+                    <div>
+                      <span class="chat-pulse"></span
+                      ><strong id="chatStage">AI 正在分析</strong
+                      ><span id="chatElapsed"></span>
+                    </div>
+                    <details>
+                      <summary>查看查詢與執行活動</summary>
+                      <ol id="chatEvents"></ol>
+                    </details>
+                  </div>
+                  <p id="assistantStatus" class="chat-status" role="status">
+                    正在確認助手服務…
+                  </p>
+                  <form id="assistantMessageForm" class="chat-composer">
+                    <div class="chat-prompts">
+                      <button
+                        type="button"
+                        data-chat-prompt="請比較友達與群創目前的優勢、風險與需要觀察的條件，缺少資料請清楚說明。"
+                      >
+                        比較兩檔股票</button
+                      ><button
+                        type="button"
+                        data-chat-prompt="請顯示台積電近期日K，解釋最近的交叉、突破或跌破訊號。"
+                      >
+                        看 K 線訊號</button
+                      ><button
+                        type="button"
+                        data-chat-prompt="請分析最新大盤狀況，整理對新手有幫助的觀察重點，區分資料事實與推論。"
+                      >
+                        看最新大盤
                       </button>
                     </div>
+                    <label class="visually-hidden" for="assistantMessage"
+                      >向股票助手提問</label
+                    >
+                    <textarea
+                      id="assistantMessage"
+                      maxlength="8000"
+                      rows="3"
+                      placeholder="例如：比較友達與群創，或分析台積電近期走勢。也可以直接問大盤或股票概念。"
+                    ></textarea>
+                    <div class="chat-composer-footer">
+                      <small
+                        >Enter 送出 · Shift＋Enter 換行 · 資料按需查詢</small
+                      >
+                      <div>
+                        <button
+                          id="assistantCancel"
+                          class="quiet"
+                          type="button"
+                          hidden
+                        >
+                          停止回覆</button
+                        ><button
+                          id="assistantSend"
+                          class="primary"
+                          type="submit"
+                        >
+                          送出訊息
+                        </button>
+                      </div>
+                    </div>
                   </form>
-                </aside>
+                </div>
               </div>
+              <dialog id="chatArtifactDialog" class="chat-artifact-dialog">
+                <header>
+                  <h3 id="chatArtifactTitle">研究內容</h3>
+                  <button id="chatArtifactClose" type="button" class="quiet">
+                    關閉
+                  </button>
+                </header>
+                <div id="chatArtifactContent"></div>
+              </dialog>
             </section>
             <section
               id="newsPanel"

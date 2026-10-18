@@ -4,7 +4,7 @@ import "./styles/dashboard.css";
 import "./styles/market-board.css";
 import "./styles/chip-workspace.css";
 import "./styles/assistant.css";
-import { initAssistantController } from "./controllers/assistant-controller.js";
+import { initAssistantController } from "./controllers/chat-controller.js";
 import { initMarketBoardController } from "./controllers/market-board-controller.js";
 import { initMediaController } from "./controllers/media-controller.js";
 import { initStockModel, state } from "./models/stock-model.js";

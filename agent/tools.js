@@ -28,6 +28,12 @@ export const toolDefinitions = [
         buy_price: { type: "number", minimum: 0.01, maximum: 1000000 },
         sell_price: { type: "number", minimum: 0.01, maximum: 1000000 },
         shares: { type: "integer", minimum: 1, maximum: 100000000 },
+        buy_price_source: {
+          type: "string",
+          enum: ["platform", "user_cost"],
+          description:
+            "platform使用平台價；user_cost僅限使用者在本Session明示的持倉成本，作個人假設，不是市場或委託價依據。",
+        },
       },
       required: ["buy_price", "sell_price", "shares"],
       additionalProperties: false,
@@ -192,7 +198,11 @@ export function createStockTools(
       );
     return value;
   }
-  async function call(name, args = {}) {
+  async function call(
+    name,
+    args = {},
+    calculationMessage = context.user_message || "",
+  ) {
     const definition = toolDefinitions.find((t) => t.name === name);
     if (
       !definition ||
@@ -256,7 +266,7 @@ export function createStockTools(
             ),
           );
         const { start, ...rest } = args;
-        return rangeTools.get(start).call(name, rest);
+        return rangeTools.get(start).call(name, rest, calculationMessage);
       }
     }
     const receivedAt = new Date().toISOString(),
@@ -270,11 +280,7 @@ export function createStockTools(
       if (name === "calculate_trade_profit") {
         category = "calculation";
         endpoint = "local:calculate_trade_profit";
-        data = calculateTrade(
-          args,
-          await snapshot(),
-          context.user_message || "",
-        );
+        data = calculateTrade(args, await snapshot(), calculationMessage);
       } else if (name === "get_stock_data") {
         const { input, report } = await snapshot();
         category = args.section;
@@ -314,6 +320,7 @@ export function createStockTools(
           evidence = filtered("technical");
           data = {
             metrics: report.metrics,
+            meta: { asset: report.meta?.asset || report.asset },
             bars: page(
               annotateTechnicalRows(calculate(input.bars)).filter(
                 (b) => b.trade_date >= scope.start && b.trade_date <= scope.end,
@@ -334,6 +341,7 @@ export function createStockTools(
         } else if (category === "scenarios") {
           evidence = report.evidence.filter((e) => e.category === "technical");
           data = {
+            meta: { asset: report.meta?.asset || report.asset },
             scenarios: report.scenarios,
             holding: report.holding,
             checks: report.plan_checks,

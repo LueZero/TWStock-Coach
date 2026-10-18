@@ -6,5 +6,6 @@ coverage/
 data/
 .tmp/
 reports/
+sessions/
 *.backup
 *.dump

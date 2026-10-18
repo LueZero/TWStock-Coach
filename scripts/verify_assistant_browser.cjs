@@ -133,396 +133,190 @@ async function until(expression, timeout = 60000) {
     });
     await send("Page.navigate", { url: base });
     await until(
-      'document.readyState === "complete" && document.getElementById("historyRows").children.length > 0',
+      'document.readyState === "complete" && typeof globalThis.stockCoach?.selectSection === "function"',
     );
     process.loadEnvFile();
     const saved = JSON.parse(
-      fs.readFileSync(path.join(scratch, "assistant-report-id.json"), "utf8"),
+      fs.readFileSync(
+        process.env.CHAT_FIXTURE_PATH ||
+          path.join(scratch, "assistant-chat-id.json"),
+        "utf8",
+      ),
     );
-    const symbol = saved.symbol || "2409";
-    // Deliberately reverse the search response order. An older request must not
-    // replace the stock selected by the user's later submission.
-    assert.equal(
-      await evaluate(`(async () => {
-      const original = globalThis.fetch;
-      globalThis.fetch = async (url, options) => {
-        const match = /^\\/api\\/search\\?q=(2330|2883)$/.exec(String(url));
-        if (!match) return original(url, options);
-        const code = match[1];
-        await new Promise(resolve => setTimeout(resolve, code === '2330' ? 350 : 10));
-        return new Response(JSON.stringify([{ market:'TWSE',symbol:code,name:code,industry:'' }]), {headers:{'Content-Type':'application/json'}});
-      };
-      try {
-        const form=document.getElementById('searchForm'), input=document.getElementById('stockInput');
-        input.value='2330'; const older=form.onsubmit({preventDefault(){}});
-        input.value='2883'; const newer=form.onsubmit({preventDefault(){}});
-        await Promise.all([older,newer]);
-        return state.stock.symbol;
-      } finally { globalThis.fetch=original; }
-    })()`),
-      "2883",
-    );
-    const stockGeneration = await evaluate("state.generation");
+    const accessKey =
+      process.env.ASSISTANT_TEST_ACCESS_KEY || process.env.ASSISTANT_ACCESS_KEY;
+    await evaluate(`globalThis.stockCoach.selectSection('assistant',false)`);
     await evaluate(
-      `document.getElementById('stockInput').value=${JSON.stringify(symbol)};document.getElementById('searchForm').requestSubmit()`,
+      `(async()=>{const r=await fetch('/api/assistant/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_key:${JSON.stringify(accessKey)}})});if(!r.ok)throw Error('Login failed');globalThis.stockCoach.selectSection('assistant',false);})()`,
     );
     await until(
-      `state.generation>${stockGeneration} && state.stock.symbol===${JSON.stringify(symbol)}`,
+      `document.querySelector('[data-session-id="${saved.session_id}"]')`,
     );
-    await until(`state.rows.some(r=>r.technical_events?.length>0)`);
     await evaluate(
-      `selectSection('overview',false);document.getElementById('showSignals').checked=true;document.getElementById('signalCategory').value='all';plot()`,
+      `document.querySelector('[data-session-id="${saved.session_id}"]').click()`,
     );
+    await until(`document.querySelectorAll('.chat-artifact-card').length>=2`);
     assert.ok(
       await evaluate(
-        `document.querySelectorAll('#chart [data-event-label]').length>0`,
+        `getComputedStyle(document.getElementById('searchForm')).display==='none' && !document.getElementById('chatNewStock')`,
       ),
     );
     await evaluate(
-      `document.getElementById('signalCategory').value='momentum';document.getElementById('signalCategory').dispatchEvent(new Event('change'))`,
+      `document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight`,
     );
+    await pause(400);
+    const capture = async (file) => {
+      const result = await send("Page.captureScreenshot", {
+        format: "png",
+        captureBeyondViewport: false,
+      });
+      fs.writeFileSync(file, Buffer.from(result.data, "base64"));
+    };
+    await capture(path.join(root, "web/public/images/screenshots/ai-chat.png"));
+    await evaluate(
+      `Array.from(document.querySelectorAll('.chat-artifact-card')).find(b=>b.textContent.includes('研究報告')).click()`,
+    );
+    await until(`document.getElementById('chatArtifactDialog').open`);
     assert.ok(
       await evaluate(
-        `Array.from(document.querySelectorAll('#chart [data-technical-event]')).every(e=>/MACD|KD/.test(e.dataset.technicalEvent))`,
-      ),
-    );
-    const signalClick = await evaluate(
-      `(() => { const m=document.querySelector('#chart [data-technical-event]'),r=m.querySelector('path').getBoundingClientRect();return {timestamp:m.dataset.barTimestamp,x:r.x+r.width/2,y:r.y+r.height/2}; })()`,
-    );
-    await send("Input.dispatchMouseEvent", {
-      type: "mousePressed",
-      x: signalClick.x,
-      y: signalClick.y,
-      button: "left",
-      clickCount: 1,
-    });
-    await send("Input.dispatchMouseEvent", {
-      type: "mouseReleased",
-      x: signalClick.x,
-      y: signalClick.y,
-      button: "left",
-      clickCount: 1,
-    });
-    assert.equal(
-      await evaluate(`state.selected.timestamp`),
-      signalClick.timestamp,
-    );
-    assert.ok(
-      await evaluate(
-        `document.getElementById('selectedSignalDetails').open && document.getElementById('selectedSignalRows').children.length>0`,
+        `document.getElementById('chatArtifactContent').textContent.length>100&&document.querySelector('.chat-artifact-download').href.includes('/artifacts/')`,
       ),
     );
     await evaluate(
-      `document.getElementById('signalCategory').value='all';plot()`,
+      `document.getElementById('chatArtifactClose').click();Array.from(document.querySelectorAll('.chat-artifact-card')).find(b=>b.textContent.includes('K 線')).click()`,
     );
-    if (saved.expected_day) {
-      await until(
-        `state.rows.at(-1)?.trade_date===${JSON.stringify(saved.expected_day)} && state.quote?.trade_date===${JSON.stringify(saved.expected_day)}`,
-      );
-      assert.equal(
-        await evaluate(`document.getElementById('endDate').value`),
-        saved.expected_day,
-      );
-      assert.ok(
-        await evaluate(
-          `document.getElementById('connectionState').textContent==='今日已收盤'`,
-        ),
-      );
-    }
-    await evaluate(`selectSection('assistant',false)`);
+    await until(`document.querySelectorAll('.chat-chart path').length>3`);
     assert.ok(
       await evaluate(
-        `document.getElementById('assistantRangeMode').value==='auto' && document.getElementById('assistantStartLabel').hidden`,
+        `document.querySelectorAll('.chat-chart [data-technical-event]').length>0`,
       ),
     );
-    await evaluate(
-      `document.getElementById('assistantRangeMode').value='manual'; document.getElementById('assistantRangeMode').dispatchEvent(new Event('change'))`,
-    );
-    assert.ok(
-      await evaluate(`!document.getElementById('assistantStartLabel').hidden`),
+    await capture(
+      path.join(root, "web/public/images/screenshots/ai-chat-chart.png"),
     );
     await evaluate(
-      `document.getElementById('assistantRangeMode').value='auto'; document.getElementById('assistantRangeMode').dispatchEvent(new Event('change'))`,
+      `document.querySelector('.chat-chart-tools select').value='momentum';document.querySelector('.chat-chart-tools select').dispatchEvent(new Event('change'))`,
     );
     assert.ok(
       await evaluate(
-        `['assistantCapital','assistantRisk','assistantShares','assistantCost','assistantDiscount','assistantMinimum'].every(id=>document.getElementById(id)===null)`,
+        `Array.from(document.querySelectorAll('.chat-chart [data-technical-event]')).every(e=>/MACD|KD/.test(e.dataset.technicalEvent))`,
       ),
     );
-    await until(`!document.getElementById('assistantLogin').hidden`);
-    await evaluate(
-      `document.getElementById('assistantAccessKey').value=${JSON.stringify(process.env.ASSISTANT_ACCESS_KEY)};document.getElementById('assistantLogin').requestSubmit()`,
-    );
-    await until(
-      `document.getElementById('assistantLogin').hidden && document.getElementById('assistantHistory').options.length>1`,
-    );
-    if (saved.failed_report_id) {
-      await evaluate(
-        `document.getElementById('assistantHistory').value=${JSON.stringify(saved.failed_report_id)};document.getElementById('assistantHistory').dispatchEvent(new Event('change'))`,
-      );
-      await until(
-        `document.getElementById('assistantContent').textContent.includes('本次分析未完成')`,
-      );
-      assert.ok(
-        !(
-          await evaluate(
-            `document.getElementById('assistantContent').textContent`,
-          )
-        ).includes("正在整理資料與產生AI摘要"),
-      );
-    }
-    await evaluate(
-      `document.getElementById('assistantHistory').value=${JSON.stringify(saved.report_id)};document.getElementById('assistantHistory').dispatchEvent(new Event('change'))`,
-    );
-    await until(
-      `document.getElementById('assistantContent').textContent.includes('AI 重點摘要')`,
-    );
-    if (saved.structured) {
-      if (saved.streamed) {
-        await until(
-          `!document.getElementById('assistantProgress').hidden && document.getElementById('assistantProgressEvents').children.length>0`,
-        );
-        assert.ok(
-          await evaluate(
-            `document.getElementById('assistantProgressConnection').textContent.length>0`,
-          ),
-        );
-      }
-      await until(
-        `document.querySelectorAll('.assistant-research-card').length===7`,
-        240000,
-      );
-      assert.equal(
-        await evaluate(
-          `document.querySelectorAll('.assistant-research-card').length`,
-        ),
-        7,
-      );
-      assert.equal(
-        await evaluate(
-          `document.querySelectorAll('.assistant-action-card').length`,
-        ),
-        3,
-      );
-      assert.ok(
-        await evaluate(
-          `document.querySelector('.assistant-report-windows').textContent.length>30`,
-        ),
-      );
-      await evaluate(
-        `document.querySelector('.assistant-action-tabs [data-action="holding"]').click()`,
-      );
-      assert.ok(
-        await evaluate(
-          `!document.querySelector('.assistant-action-card.holding').hidden && document.querySelector('.assistant-action-card.entry').hidden`,
-        ),
-      );
-      await evaluate(
-        `document.querySelector('.assistant-action-tabs [data-action="entry"]').click()`,
-      );
-      await evaluate(
-        `Array.from(document.querySelectorAll('.assistant-report-nav button')).find(b=>b.textContent==='財務').click()`,
-      );
-      await pause(400);
-      assert.ok(
-        await evaluate(
-          `document.getElementById('assistantContent').scrollTop>100`,
-        ),
-      );
-      await evaluate(`document.getElementById('assistantContent').scrollTop=0`);
-    }
-    // Render a newly computed rule report using real platform data. This checks
-    // the new event format without launching a model or rewriting saved reports.
-    const signalReport = await evaluate(`(async () => {
-      const response=await fetch('/api/research/report-input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({market:state.stock.market,symbol:state.stock.symbol,mode:'historical',start:'2026-04-01',as_of:new Date().toISOString(),message:'驗證K線訊號'})});
-      if(!response.ok)throw Error('signal packet '+response.status);
-      const packet=await response.json(), view=await import('/src/views/assistant-view.js');
-      view.renderAssistantReport(packet.report,'chart',{bar:r=>{globalThis.__signalBarDate=r.trade_date;},dashboard(){},tab(){},evidence(){}});
-      return {events:packet.report.chart_annotations.length,version:packet.report.technical_event_version};
-    })()`);
-    assert.equal(signalReport.version, "technical-events-v1");
-    assert.ok(signalReport.events > 16);
-    assert.ok(
-      await evaluate(
-        `document.querySelectorAll('.assistant-chart [data-event-label]').length>0`,
-      ),
-    );
-    await evaluate(
-      `const s=document.querySelector('[data-report-signals]');s.value='levels';s.dispatchEvent(new Event('change'))`,
-    );
-    assert.ok(
-      await evaluate(
-        `Array.from(document.querySelectorAll('.assistant-chart [data-technical-event]')).every(e=>/突破|跌破|站回/.test(e.dataset.technicalEvent))`,
-      ),
-    );
-    await evaluate(
-      `document.querySelector('.assistant-chart [data-technical-event]').dispatchEvent(new MouseEvent('click',{bubbles:true}))`,
-    );
-    assert.ok(
-      await evaluate(
-        `document.querySelector('.assistant-chart-readout').textContent.includes('MA20') || /突破|跌破/.test(document.querySelector('.assistant-chart-readout').textContent)`,
-      ),
-    );
-    const signalShot = await send("Page.captureScreenshot", { format: "png" });
-    fs.writeFileSync(
-      path.join(scratch, "technical-report-chart.png"),
-      Buffer.from(signalShot.data, "base64"),
-    );
-    await evaluate(
-      `document.querySelector('[data-report-tab="summary"]').click()`,
-    );
-    for (const tab of ["plan", "evidence", "quality", "chart", "summary"]) {
-      await evaluate(
-        `document.querySelector('[data-report-tab="${tab}"]').click()`,
-      );
-      assert.ok(
-        await evaluate(
-          `document.getElementById('assistantContent').textContent.length>30`,
-        ),
-        tab,
-      );
-      if (tab === "plan") {
-        assert.ok(
-          await evaluate(
-            `document.querySelectorAll('.assistant-observation').length>=7`,
-          ),
-        );
-      }
-    }
-    await until(`!document.getElementById('assistantGenerate').disabled`);
-    assert.ok(
-      await evaluate(
-        `document.getElementById('assistantContent').textContent.includes('AI 重點摘要')`,
-      ),
-    );
-    assert.equal(
-      await evaluate(
-        `document.querySelectorAll('#assistantContent a[download]').length`,
-      ),
-      2,
-    );
-    await until(
-      `document.getElementById('assistantMessages').children.length>=2`,
-    );
-    for (const width of [1440, 1024, 390, 320]) {
+    await evaluate(`document.getElementById('chatArtifactClose').click()`);
+    for (const width of [1024, 390, 320]) {
       await send("Emulation.setDeviceMetricsOverride", {
         width,
-        height: 1000,
+        height: 1100,
         deviceScaleFactor: 1,
-        mobile: width < 600,
+        mobile: false,
       });
       await pause(250);
-      const size = await evaluate(
-        `({width:innerWidth,scroll:document.documentElement.scrollWidth})`,
+      const sizes = await evaluate(
+        `({width:innerWidth,body:document.body.scrollWidth,thread:document.querySelector('.chat-thread').getBoundingClientRect().width})`,
       );
-      assert.ok(size.scroll <= size.width + 1, JSON.stringify(size));
+      assert.ok(sizes.body <= sizes.width + 1, JSON.stringify(sizes));
+      assert.ok(sizes.thread > 200);
     }
     await send("Emulation.setDeviceMetricsOverride", {
       width: 1440,
-      height: 1100,
+      height: 1200,
       deviceScaleFactor: 1,
       mobile: false,
     });
-    await pause(300);
-    const imageDir = path.join(root, "web/public/images/screenshots");
-    fs.mkdirSync(imageDir, { recursive: true });
-    const shot = await send("Page.captureScreenshot", { format: "png" });
-    fs.writeFileSync(
-      path.join(imageDir, "ai-report.png"),
-      Buffer.from(shot.data, "base64"),
-    );
     await evaluate(
-      `document.querySelector('[data-report-tab="chart"]').click()`,
-    );
-    await until(`document.querySelector('.assistant-chart rect')`);
-    if (symbol === "2883") {
-      assert.ok(
-        await evaluate(
-          `document.querySelectorAll('[data-technical-event]').length>0`,
-        ),
-      );
-      await evaluate(
-        `document.querySelector('.assistant-chart rect[role=button]').dispatchEvent(new MouseEvent('mouseenter'))`,
-      );
-      assert.ok(
-        await evaluate(
-          `document.querySelector('.assistant-chart-readout').textContent.includes('收 ')`,
-        ),
-      );
-    }
-    const first = await evaluate(
-      `document.querySelector('.assistant-chart-tools span').textContent`,
-    );
-    await evaluate(
-      `Array.from(document.querySelectorAll('.assistant-chart-tools button')).find(b=>b.textContent==='放大').click()`,
-    );
-    assert.notEqual(
-      await evaluate(
-        `document.querySelector('.assistant-chart-tools span').textContent`,
-      ),
-      first,
-    );
-    const chartShot = await send("Page.captureScreenshot", { format: "png" });
-    fs.writeFileSync(
-      path.join(imageDir, "ai-report-chart.png"),
-      Buffer.from(chartShot.data, "base64"),
-    );
-    await evaluate(`document.getElementById('assistantToggleChat').click()`);
-    assert.equal(
-      await evaluate(
-        `document.getElementById('assistantChat').getBoundingClientRect().width`,
-      ),
-      0,
-    );
-    await evaluate(`document.getElementById('assistantToggleChat').click()`);
-    await evaluate(
-      `document.querySelector('.assistant-chart rect[role=button]').dispatchEvent(new MouseEvent('click',{bubbles:true}))`,
-    );
-    assert.equal(
-      await evaluate(`document.getElementById('assistantMode').value`),
-      "historical",
-    );
-    await evaluate(
-      `Array.from(document.querySelectorAll('#assistantContent button')).find(b=>b.textContent==='回個股看盤工作台').click()`,
+      `document.getElementById('chatSessionDrawer').open=true;document.getElementById('chatNewSession').click()`,
     );
     await until(
-      `state.rows.length>0 && document.getElementById('chartDescription').textContent.includes('報告')`,
+      `!document.getElementById('assistantSend').disabled&&document.querySelector('.chat-welcome')`,
     );
-    assert.ok(
-      await evaluate(
-        `document.getElementById('chartDescription').textContent.includes('固定條件線')`,
-      ),
+    const first = await evaluate(
+      `document.querySelector('.chat-session[aria-pressed="true"]').dataset.sessionId`,
     );
-    await evaluate(`state.rows.at(-1).revision++;plot()`);
-    assert.ok(
-      await evaluate(
-        `document.getElementById('chartDescription').textContent.includes('條件線已隱藏')`,
-      ),
-    );
-    await evaluate(`selectSection('assistant',false)`);
     await evaluate(
-      `state.stock={market:'TWSE',symbol:'2330',name:'台積電',industry:'半導體'};document.dispatchEvent(new CustomEvent('stock-coach:stock'))`,
+      `document.getElementById('assistantMessage').value='介面測試第一問：只回覆「回答已保存」，不用查資料。';document.getElementById('assistantMessageForm').requestSubmit()`,
     );
+    await until(`!document.getElementById('assistantCancel').hidden`);
+    await until(
+      `!document.getElementById('assistantSend').disabled&&document.getElementById('chatMessages').textContent.includes('回答已保存')`,
+    );
+    const scope = await evaluate(
+      `document.getElementById('chatScope').textContent`,
+    );
+    await evaluate(
+      `document.getElementById('stockInput').value='2883';document.getElementById('searchForm').requestSubmit()`,
+    );
+    await until(`state.stock.symbol==='2883'`);
+    assert.equal(
+      await evaluate(`document.getElementById('chatScope').textContent`),
+      scope,
+    );
+    await evaluate(`document.getElementById('chatNewSession').click()`);
+    await until(
+      `!document.getElementById('assistantSend').disabled&&document.querySelector('.chat-welcome')`,
+    );
+    const second = await evaluate(
+      `document.querySelector('.chat-session[aria-pressed="true"]').dataset.sessionId`,
+    );
+    assert.notEqual(first, second);
     assert.ok(
       !(
-        await evaluate(
-          `document.getElementById('assistantContent').textContent`,
-        )
-      ).includes("MA20"),
+        await evaluate(`document.getElementById('chatMessages').textContent`)
+      ).includes("介面測試第一問"),
+    );
+    await evaluate(
+      `document.getElementById('assistantMessage').value='第二段草稿';document.getElementById('assistantMessage').dispatchEvent(new Event('input'));document.querySelector('[data-session-id="${first}"]').click()`,
+    );
+    await until(
+      `document.querySelector('.chat-session[aria-pressed="true"]').dataset.sessionId==='${first}'&&!document.getElementById('assistantSend').disabled`,
+    );
+    assert.ok(
+      (
+        await evaluate(`document.getElementById('chatMessages').textContent`)
+      ).includes("介面測試第一問"),
+    );
+    await evaluate(
+      `document.querySelector('[data-session-id="${second}"]').click()`,
+    );
+    await until(
+      `document.querySelector('.chat-session[aria-pressed="true"]').dataset.sessionId==='${second}'&&!document.getElementById('assistantSend').disabled`,
+    );
+    assert.equal(
+      await evaluate(`document.getElementById('assistantMessage').value`),
+      "第二段草稿",
+    );
+    await evaluate(
+      `document.getElementById('assistantMessageForm').requestSubmit()`,
+    );
+    await until(`!document.getElementById('assistantCancel').hidden`);
+    await evaluate(`document.getElementById('assistantCancel').click()`);
+    await until(
+      `document.getElementById('assistantCancel').hidden&&!document.getElementById('assistantSend').disabled`,
+    );
+    assert.ok(
+      (
+        await evaluate(`document.getElementById('chatMessages').textContent`)
+      ).match(/已停止|取消/),
+    );
+    await send("Page.reload");
+    await until(
+      `document.readyState==='complete'&&typeof globalThis.stockCoach?.selectSection==='function'`,
+    );
+    await evaluate(`globalThis.stockCoach.selectSection('assistant',false)`);
+    await until(
+      `document.querySelector('.chat-session[aria-pressed="true"]')?.dataset.sessionId==='${second}'`,
     );
     assert.equal(errors.length, 0, JSON.stringify(errors));
     console.log(
       JSON.stringify({
         status: "passed",
-        tabs: 5,
-        widths: [1440, 1024, 390, 320],
-        reportSwitch: true,
-        chartZoom: true,
-        historicalBar: true,
-        chatCollapse: true,
+        sessionIsolation: true,
         stockIsolation: true,
-        searchRace: true,
-        technicalMarkers: true,
+        drafts: true,
+        streaming: true,
+        cancellation: true,
+        reload: true,
+        artifacts: true,
+        responsive: [1440, 1024, 390, 320],
         screenshots: 2,
       }),
     );

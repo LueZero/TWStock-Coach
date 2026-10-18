@@ -1,14 +1,8 @@
 import Fastify from "fastify";
-import {
-  randomUUID,
-  createHmac,
-  createHash,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { createReportStore, validateId } from "./report-store.js";
-import { codexHealth, runCodex, PROMPT_VERSION } from "./codex-adapter.js";
-import { validateExplanation } from "./report-schema.js";
-import { validationReport as buildValidationReport } from "./report-validation.js";
+import { codexHealth } from "./codex-adapter.js";
+import { registerChatRoutes } from "./chat-routes.js";
 
 const fail = (message, statusCode = 422) => {
   throw Object.assign(Error(message), { statusCode });
@@ -22,34 +16,11 @@ export function createAgent({
   directory = process.env.ASSISTANT_REPORT_DIR || "reports",
   accessKey = process.env.ASSISTANT_ACCESS_KEY || "",
   health = codexHealth,
-  run = runCodex,
+  chatRun,
+  sessionDirectory,
 } = {}) {
   const app = Fastify({ bodyLimit: 2 * 1024 * 1024, logger: false });
   const store = createReportStore(directory);
-  let active = null,
-    executionTask = null;
-  const subscribers = new Map();
-  function publish(doc, activity) {
-    const events = (doc.progress_events ||= []);
-    const last = events.at(-1);
-    if (
-      last &&
-      last.phase === activity.phase &&
-      last.message === activity.message &&
-      last.tool === activity.tool
-    )
-      return;
-    const event = {
-      id: (events.at(-1)?.id || 0) + 1,
-      at: new Date().toISOString(),
-      ...activity,
-    };
-    events.push(event);
-    if (events.length > 300) events.shift();
-    doc.run.phase = activity.phase;
-    for (const send of subscribers.get(doc.report.id) || [])
-      send("progress", event);
-  }
   const origins = (
     process.env.ASSISTANT_ALLOWED_ORIGINS ||
     "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:4173,http://localhost:4173"
@@ -82,9 +53,15 @@ export function createAgent({
     reply.code(error.statusCode || 500).send({
       detail: error.statusCode
         ? error.message
-        : "助手處理失敗，報告檔案仍保留；請檢查服務日誌。",
+        : "助手處理失敗，已存對話保留；請檢查服務日誌。",
     }),
   );
+  const chat = registerChatRoutes(app, {
+    authorized,
+    health,
+    directory: sessionDirectory,
+    run: chatRun,
+  });
   app.get("/api/assistant/status", async (request) => {
     const value = await health();
     let authenticated = false;
@@ -97,7 +74,8 @@ export function createAgent({
       configured: accessKey.length >= 24,
       connected: true,
       authenticated,
-      active_report: authenticated ? (active?.id ?? null) : undefined,
+      active_report: authenticated ? null : undefined,
+      active_session: authenticated ? chat.activeId() : undefined,
     };
   });
   const attempts = new Map();
@@ -136,343 +114,36 @@ export function createAgent({
     );
     return { authenticated: false };
   });
-  const message = (value) => {
-    if (typeof value !== "string" || !value.trim() || value.length > 2000)
-      fail("訊息需為1至2000字");
-    return value.trim();
-  };
-  async function load(id) {
-    if (active?.id === id && active.doc) return active.doc;
-    const doc = await store.load(id);
-    if (doc.run.status === "running" && active?.id !== id) {
-      doc.run = {
-        ...doc.run,
-        status: "interrupted",
-        error: "agent已中斷；原報告保留，請手動重新分析或追問。",
-      };
-      await store.save(doc);
-    }
-    return doc;
-  }
-  async function execute(doc, text, kind, service) {
-    const controller = new AbortController(),
-      id = doc.report.id;
-    active = { id, controller, doc };
-    doc.run.started_at = new Date().toISOString();
-    publish(doc, {
-      phase: "preparing",
-      message:
-        kind === "report"
-          ? "分析已開始，正在準備資料"
-          : "追問已開始，正在更新本次資料",
-    });
-    try {
-      const response = await run(
-        {
-          kind,
-          message: text,
-          report: doc.report,
-          session_id: doc.session_id || null,
-        },
-        {
-          signal: controller.signal,
-          onProgress: (activity) => publish(doc, activity),
-          onPrepared: async (prepared) => {
-            doc.analysis_inputs = [...(doc.analysis_inputs || []), prepared];
-            doc.report.input_manifest = prepared.manifest;
-            doc.run.phase = "analyzing";
-            await store.save(doc);
-          },
-        },
-      );
-      if (controller.signal.aborted) throw Error("已取消分析");
-      const calls = response.tool_calls || [];
-      doc.tool_calls = [...(doc.tool_calls || []), ...calls];
-      for (const call of calls.filter((c) => c.status === "completed")) {
-        for (const evidence of call.evidence || [])
-          if (!doc.report.evidence.some((e) => e.id === evidence.id))
-            doc.report.evidence.push(evidence);
-        if (!doc.report.evidence.some((e) => e.id === call.evidence_id))
-          doc.report.evidence.push({
-            id: call.evidence_id,
-            category: "tool",
-            label: `${call.name} ${call.arguments.section || call.arguments.metric || call.arguments.dataset || "清單"}`,
-            as_of: call.as_of,
-            received_at: call.queried_at,
-            source: call.endpoint,
-            data: { ...call.data, evidence: call.evidence || [] },
-          });
-      }
-      const validationReport = buildValidationReport(calls, doc.report, text);
-      let result;
-      try {
-        result = validateExplanation(response.result, validationReport);
-      } catch (error) {
-        // Keep rejected output for local diagnosis; never present it as a report.
-        doc.validation_failure = {
-          at: new Date().toISOString(),
-          error: error.message,
-          detail: error.validation_detail || null,
-          rejected_output: response.result,
-        };
-        throw error;
-      }
-      doc.session_id = response.session_id || doc.session_id || null;
-      const content = {
-        ...result,
-        usage: response.usage,
-        created_at: new Date().toISOString(),
-        analysis_scope: response.scope,
-        input_manifest: doc.analysis_inputs?.at(-1)?.manifest || [],
-        tool_evidence_ids: calls
-          .filter((c) => c.status === "completed")
-          .map((c) => c.evidence_id),
-      };
-      doc.messages.push({ role: "assistant", content });
-      if (kind === "report")
-        doc.report.ai = {
-          ...content,
-          generated_at: content.created_at,
-          provider: "Codex CLI",
-          cli_version: service.version,
-          prompt_version: PROMPT_VERSION,
-          model: process.env.ASSISTANT_MODEL || "CLI default",
-          session_id: doc.session_id,
-        };
-      doc.run = {
-        status: "completed",
-        started_at: doc.run.started_at,
-        kind,
-        usage: response.usage,
-        finished_at: new Date().toISOString(),
-        error: null,
-      };
-    } catch (e) {
-      if (e.tool_calls)
-        doc.tool_calls = [...(doc.tool_calls || []), ...e.tool_calls];
-      doc.run = {
-        status: controller.signal.aborted ? "cancelled" : "failed",
-        started_at: doc.run.started_at,
-        kind,
-        error: e.message,
-        finished_at: new Date().toISOString(),
-      };
-    }
-    try {
-      publish(doc, {
-        phase: doc.run.status,
-        message:
-          doc.run.status === "completed"
-            ? "報告已通過驗證"
-            : doc.run.error || "分析已停止",
-      });
-      await store.save(doc);
-    } catch (e) {
-      console.error(
-        "Agent：無法保存報告；請檢查reports目錄權限與空間。",
-        e.code || "unknown",
-      );
-      doc.run.status = "failed";
-      doc.run.error = "報告保存失敗，請檢查reports目錄權限與空間。";
-      publish(doc, { phase: "failed", message: doc.run.error });
-    } finally {
-      for (const send of subscribers.get(id) || [])
-        send("done", { status: doc.run.status });
-      if (active?.id === id) active = null;
-    }
-  }
-  async function ready() {
-    if (active) fail("已有分析執行中，請完成或取消後再送出", 409);
-    const service = await health();
-    if (active) fail("已有分析執行中，請完成或取消後再送出", 409);
-    return service;
-  }
+
   app.get("/api/assistant/reports", async (request) => {
     authorized(request);
     return store.list(request.query.market, request.query.symbol);
   });
-  app.post("/api/assistant/reports", async (request, reply) => {
-    authorized(request);
-    const service = await ready(),
-      { report, input } = request.body || {},
-      text = message(request.body?.message || input?.message);
-    if (
-      !report ||
-      !input ||
-      !["TWSE", "TPEX"].includes(report.meta?.market) ||
-      typeof report.meta.symbol !== "string" ||
-      !/^[A-Za-z0-9._-]{1,16}$/.test(report.meta.symbol) ||
-      !Array.isArray(report.evidence) ||
-      !Array.isArray(report.scenarios) ||
-      !Array.isArray(report.chart_bars) ||
-      report.meta.market !== input.market ||
-      report.meta.symbol !== input.symbol ||
-      report.meta.as_of !== input.as_of
-    )
-      fail("分析資料包不符，請從股票平台重新取得");
-    report.id = randomUUID();
-    report.snapshot_id =
-      "sha256:" +
-      createHash("sha256").update(JSON.stringify(input)).digest("hex");
-    report.ai = null;
-    const doc = {
-      format_version: 1,
-      report,
-      input,
-      session_id: null,
-      messages: [{ role: "user", content: { text } }],
-      run: {
-        status: service.ready ? "running" : "unavailable",
-        kind: "report",
-        error: service.ready ? null : service.note,
-      },
-    };
-    // Reserve before awaiting disk I/O so concurrent requests cannot start another CLI.
-    active = { id: report.id, controller: new AbortController() };
-    try {
-      await store.save(doc);
-    } catch (e) {
-      active = null;
-      throw e;
-    }
-    if (service.ready) executionTask = execute(doc, text, "report", service);
-    else active = null;
-    return reply.code(202).send({
-      report,
-      status: service.ready ? "running" : "unavailable",
-      run: doc.run,
-    });
-  });
   app.get("/api/assistant/reports/:id", async (request) => {
     authorized(request);
-    const doc = await load(validateId(request.params.id));
-    return {
-      report: doc.report,
-      messages: doc.messages,
-      run: doc.run,
-      progress_events: doc.progress_events || [],
-      session_id: doc.session_id,
-      tool_calls: doc.tool_calls || [],
-      analysis_inputs: (doc.analysis_inputs || []).map(
-        ({ scope, manifest, template_version, prepared_at }) => ({
-          scope,
-          manifest,
-          template_version,
-          prepared_at,
-        }),
-      ),
-    };
-  });
-  app.get("/api/assistant/reports/:id/events", async (request, reply) => {
-    authorized(request);
-    const id = validateId(request.params.id),
-      doc = active?.id === id && active.doc ? active.doc : await load(id);
-    reply.hijack();
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    reply.raw.write("retry: 2000\n\n");
-    let timer;
-    const send = (type, data) => {
-      if (reply.raw.destroyed || reply.raw.writableEnded) return;
-      reply.raw.write(
-        `${type === "progress" ? `id: ${data.id}\n` : ""}event: ${type}\ndata: ${JSON.stringify(data)}\n\n`,
-      );
-      if (type === "done") reply.raw.end();
-    };
-    const listeners = subscribers.get(id) || new Set();
-    subscribers.set(id, listeners);
-    listeners.add(send);
-    const cleanup = () => {
-      clearInterval(timer);
-      listeners.delete(send);
-      if (!listeners.size) subscribers.delete(id);
-    };
-    reply.raw.on("close", cleanup);
-    const since = Number(request.headers["last-event-id"] || 0);
-    for (const event of doc.progress_events || [])
-      if (event.id > since) send("progress", event);
-    send("heartbeat", {
-      at: new Date().toISOString(),
-      started_at: doc.run.started_at,
-      status: doc.run.status,
-    });
-    if (doc.run.status !== "running") {
-      send("done", { status: doc.run.status });
-      return;
-    }
-    timer = setInterval(
-      () =>
-        send("heartbeat", {
-          at: new Date().toISOString(),
-          started_at: doc.run.started_at,
-          status: doc.run.status,
-        }),
-      10000,
-    );
+    return store.load(validateId(request.params.id));
   });
   app.get("/api/assistant/reports/:id/download", async (request, reply) => {
     authorized(request);
     const id = validateId(request.params.id),
-      doc = await load(id);
-    const json = request.query.format === "json";
+      json = request.query.format === "json",
+      doc = await store.load(id);
     reply
       .header(
         "Content-Disposition",
         `attachment; filename="${doc.report.meta.symbol}-${id}.${json ? "json" : "md"}"`,
       )
       .type(json ? "application/json" : "text/markdown; charset=utf-8");
-    return json ? JSON.stringify(doc, null, 2) : await store.markdown(id);
+    return json ? JSON.stringify(doc, null, 2) : store.markdown(id);
   });
-  app.post(
+  for (const path of [
+    "/api/assistant/reports",
     "/api/assistant/reports/:id/messages",
-    { bodyLimit: 4096 },
-    async (request, reply) => {
+    "/api/assistant/reports/:id/cancel",
+  ])
+    app.post(path, async (request) => {
       authorized(request);
-      const text = message(request.body?.message);
-      const doc = await load(validateId(request.params.id));
-      const service = await ready();
-      doc.messages.push({ role: "user", content: { text } });
-      doc.run = {
-        status: service.ready ? "running" : "unavailable",
-        kind: doc.report.ai ? "question" : "report",
-        error: service.ready ? null : service.note,
-      };
-      active = { id: doc.report.id, controller: new AbortController() };
-      try {
-        await store.save(doc);
-      } catch (e) {
-        active = null;
-        throw e;
-      }
-      if (service.ready)
-        executionTask = execute(doc, text, doc.run.kind, service);
-      else active = null;
-      return reply.code(202).send({
-        status: service.ready ? "running" : "unavailable",
-        report_id: doc.report.id,
-        run: doc.run,
-      });
-    },
-  );
-  app.post("/api/assistant/reports/:id/cancel", async (request) => {
-    authorized(request);
-    const id = validateId(request.params.id);
-    if (active?.id === id) {
-      active.controller.abort();
-      return { status: "cancelling" };
-    }
-    return { status: "unchanged" };
-  });
-  app.addHook("preClose", async () => {
-    active?.controller.abort();
-    for (const listeners of subscribers.values())
-      for (const send of [...listeners])
-        send("done", { status: "interrupted" });
-    await executionTask;
-  });
+      fail("已改用獨立Chat Session；舊報告僅供讀取與下載。", 410);
+    });
   return app;
 }

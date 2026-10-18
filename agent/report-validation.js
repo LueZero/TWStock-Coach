@@ -10,6 +10,7 @@ export function validationReport(calls, fallback, message) {
   return {
     asset:
       fresh.find((c) => c.arguments.section === "overview")?.data.meta?.asset ||
+      fresh.find((c) => c.data?.meta?.asset)?.data.meta.asset ||
       fallback.meta?.asset ||
       fallback.asset,
     evidence: fresh.flatMap((c) => [

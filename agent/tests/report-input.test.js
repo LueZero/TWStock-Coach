@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareReportInput } from "../report-input.js";
-import { reportPrompt } from "../codex-adapter.js";
 import { validateExplanation } from "../report-schema.js";
 import { toolDefinitions, createStockTools } from "../tools.js";
 import { validateAssistantInput } from "../../api/research-packet.js";
@@ -151,15 +150,6 @@ test("模型啟動前整理所有面向，完整區間K線分頁合併，缺資�
       (c) => c.as_of === scope.as_of && c.origin === "prepared_input",
     ),
   );
-  const prompt = reportPrompt({
-    report: { id: "test" },
-    message: "請分析獲利與進場",
-    prepared_input: value.packet,
-  });
-  assert.match(prompt, /請分析獲利與進場/);
-  assert.match(prompt, /"value":0.95/);
-  assert.match(prompt, /個股分析報告模板/);
-  assert.doesNotMatch(prompt, /read_analysis_skill/);
 });
 
 test("資料清單區分部分財務來源、長均線暖機不足及無有效同業", async () => {

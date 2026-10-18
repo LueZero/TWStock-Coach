@@ -98,7 +98,11 @@ export const explanationSchema = {
     "cautions",
   ],
 };
-export function validateExplanation(value, report) {
+export function validateExplanation(
+  value,
+  report,
+  { maxTextLength = 6000 } = {},
+) {
   if (
     !value ||
     typeof value !== "object" ||
@@ -118,7 +122,8 @@ export function validateExplanation(value, report) {
     )
   )
     throw Error("AI回覆格式不符");
-  const text = (v) => typeof v === "string" && v.length > 0 && v.length <= 6000;
+  const text = (v) =>
+    typeof v === "string" && v.length > 0 && v.length <= maxTextLength;
   if (
     !text(value.answer) ||
     (value.summary !== undefined && !text(value.summary)) ||

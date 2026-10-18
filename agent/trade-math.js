@@ -32,6 +32,30 @@ export function statedShares(message = "") {
   return quantities;
 }
 
+export function statedCostPrices(message = "") {
+  const costs = new Set();
+  for (const match of message.matchAll(/\d+(?:,\d{3})*(?:\.\d+)?/g)) {
+    const before = message
+      .slice(Math.max(0, match.index - 35), match.index)
+      .split(/[，,。；;\n]/)
+      .at(-1);
+    const after = message.slice(match.index + match[0].length);
+    if (
+      /^\s*(?:股|張|口|%)/.test(after) ||
+      /(?:希望|期望|目標|賺|獲利|股息|除息|股利)/.test(before)
+    )
+      continue;
+    if (
+      /(?:成本|買價|買入價|買進價|成交價)\s*[為是：:約在]*\s*$/.test(before) ||
+      /(?:持有|買入|買進|撿|加碼)[^。；;\n]{0,18}$/.test(before)
+    ) {
+      const number = Number(match[0].replaceAll(",", ""));
+      if (number > 0) costs.add(number);
+    }
+  }
+  return costs;
+}
+
 // Operands must come from this run's stock prices, not arbitrary AI targets.
 export function calculateTrade(args, snapshot, message) {
   const report = snapshot.report;
@@ -39,13 +63,19 @@ export function calculateTrade(args, snapshot, message) {
     executable: true,
   });
   for (const k of ["buy_price", "sell_price"])
-    if (!prices.has(String(args[k])))
+    if (
+      k === "buy_price" && args.buy_price_source === "user_cost"
+        ? !statedCostPrices(message).has(args[k])
+        : !prices.has(String(args[k]))
+    )
       throw Error("試算買賣價須引用本次股票價格或其合法跳檔調整，不能自行編造");
   if (!statedShares(message).has(args.shares))
     throw Error("試算股數須由使用者本次問題提供，例如一張或1000股");
   const delta = new Decimal(args.sell_price).minus(args.buy_price);
   return {
+    meta: { asset: report.meta?.asset || report.asset },
     buy_price: args.buy_price,
+    buy_price_source: args.buy_price_source || "platform",
     sell_price: args.sell_price,
     shares: args.shares,
     price_difference: delta.toNumber(),

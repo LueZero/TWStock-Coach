@@ -59,6 +59,9 @@ export function stockPriceValues(
     }
     // Tool audit envelopes: only typed stock data, never arbitrary numeric cells.
     const data = e.data || {};
+    if (data.kind === "official_daily_screen")
+      for (const group of data.groups || [])
+        for (const row of group.rows || []) add(row.close, row.asset);
     metrics(data.metrics, asset);
     scenarios(data.scenarios, asset);
     (data.bars?.rows || []).forEach((row) => priceRow(row, asset));

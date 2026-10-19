@@ -130,11 +130,14 @@ export async function runCodexProcess({
           }
           if (event.type === "turn.completed") usage = event.usage;
           if (
-            event.type === "item.completed" &&
+            ["item.started", "item.updated", "item.completed"].includes(
+              event.type,
+            ) &&
             event.item?.type === "agent_message"
           ) {
-            finalText = event.item.text;
-            onMessage?.({ id: event.item.id, text: event.item.text });
+            if (event.type === "item.completed") finalText = event.item.text;
+            if (typeof event.item.text === "string" && event.item.text)
+              onMessage?.({ id: event.item.id, text: event.item.text });
           }
         } catch {
           /* Non-JSON diagnostic lines are not exposed. */

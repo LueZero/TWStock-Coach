@@ -36,6 +36,40 @@ const targetDefinitions = chatToolDefinitions
   }));
 export const assistantToolDefinitions = [
   {
+    name: "screen_market_stocks",
+    description:
+      "查官方上市／上櫃盤後全市場價量，依價格、成交量、成交金額、漲跌幅條件篩選及排序。不是名稱搜尋或盤中即時排名；不同來源日期分組，不可混排稱同日全市場排行。技術、財務、產業條件需取得候選後另外核對，不可宣稱已篩選。歷史模式不提供。",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        market: { type: "string", enum: ["ALL", "TWSE", "TPEX"] },
+        asset: { type: "string", enum: ["stock", "etf", "all"] },
+        sort_by: {
+          type: "string",
+          enum: ["close", "volume_shares", "turnover", "change_percent"],
+        },
+        order: { type: "string", enum: ["asc", "desc"] },
+        limit: { type: "integer", minimum: 1, maximum: 50 },
+        offset: { type: "integer", minimum: 0, maximum: 10000 },
+        min_price: { type: "number", minimum: 0 },
+        max_price: { type: "number", minimum: 0 },
+        min_volume_shares: {
+          type: "number",
+          minimum: 0,
+          description: "股；使用者說張需乘1000",
+        },
+        min_turnover: {
+          type: "number",
+          minimum: 0,
+          description: "成交金額，元",
+        },
+        min_change_percent: { type: "number" },
+        max_change_percent: { type: "number" },
+      },
+    },
+  },
+  {
     name: "search_stocks",
     description:
       "依使用者提供的公司／ETF名稱、簡稱或股票代號搜尋平台目錄。保留前導零；歧義時列候選讓使用者確認，不自行猜公司或同業。",
@@ -241,6 +275,40 @@ export function createAssistantTools(
         data,
       });
       return data;
+    }
+    if (name === "screen_market_stocks") {
+      if (context.scope.mode === "historical")
+        throw Error("全市場篩選僅提供最新官方盤後資料，不可用於歷史截止選股");
+      for (const [key, value] of Object.entries(args)) {
+        const field = definition.inputSchema.properties[key];
+        if (
+          field.enum
+            ? !field.enum.includes(value)
+            : typeof value !== "number" ||
+              !Number.isFinite(value) ||
+              (field.type === "integer" && !Number.isInteger(value)) ||
+              (field.minimum != null && value < field.minimum) ||
+              (field.maximum != null && value > field.maximum)
+        )
+          throw Error("選股條件格式不符：" + key);
+      }
+      const data = await request(
+        `/api/market/screen?${new URLSearchParams(args)}`,
+      );
+      if (data.kind !== "official_daily_screen" || !Array.isArray(data.groups))
+        throw Error("選股API回應格式不符");
+      // Candidate identity must still be verified against the platform catalogue before individual queries.
+      const result = {
+        name,
+        arguments: args,
+        status: "completed",
+        category: "screen",
+        evidence_id: evidenceId(data),
+        scope: baseScope(),
+        data,
+      };
+      await record(result);
+      return result;
     }
     if (name === "get_market_data") {
       if (context.scope.mode === "historical")

@@ -108,6 +108,20 @@ export function contract(path, method) {
   if (path.includes(":market"))
     schema.params = object(pair, ["market", "symbol"]);
   const queries = {
+    "/api/market/screen": object({
+      market: enumOf("ALL", "TWSE", "TPEX"),
+      asset: enumOf("stock", "etf", "all"),
+      sort_by: enumOf("close", "volume_shares", "turnover", "change_percent"),
+      order: enumOf("asc", "desc"),
+      limit: text,
+      offset: text,
+      min_price: text,
+      max_price: text,
+      min_volume_shares: text,
+      min_turnover: text,
+      min_change_percent: text,
+      max_change_percent: text,
+    }),
     "/api/market/chips": object({ date }),
     "/api/media/:market/:symbol": object({ date, ...range, cursor: date }),
     "/api/market/board/chart": object({

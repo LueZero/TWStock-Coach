@@ -63,7 +63,10 @@ export function registerChatRoutes(
         onMessage: (message) => {
           if (!message.text || message.text.length > 60000) return;
           const draft = { id: message.id || randomUUID(), text: message.text };
-          turn.drafts.push(draft);
+          const existing = turn.drafts.find((d) => d.id === draft.id);
+          if (existing?.text === draft.text) return;
+          if (existing) existing.text = draft.text;
+          else turn.drafts.push(draft);
           if (turn.drafts.length > 20) turn.drafts.shift();
           publish(session, turn, "assistant_text", {
             message_id: draft.id,

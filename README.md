@@ -130,7 +130,7 @@ npm run preview    # 本機預覽：http://127.0.0.1:4173
 
 ![獨立Chat與Session清單](web/public/images/screenshots/ai-chat.png)
 
-Codex依問題按需呼叫看盤、技術、財務、籌碼、同業、新聞及大盤工具。每個Session獨立接續，需要時產出可下載報告與日K引導，詳見[功能設計](docs/FEATURES.md#股票助手)。本機安裝與訂閱登入見[本機 AI Agent](#本機-codex-cli-與-ai-agent)。
+Codex依問題按需呼叫看盤、技術、財務、籌碼、同業、新聞及大盤工具，也可使用全市場價量篩選工具，查價格區間、成交量、成交金額與漲跌幅排行。全市場來源是官方盤後日資料；上市與上櫃日期不同時分組呈現，不混排為同日即時排行。回覆與查詢進度直接顯示在Chat，每個Session獨立接續，需要時產出可下載報告與日K引導，詳見[功能設計](docs/FEATURES.md#股票助手)。本機安裝與訂閱登入見[本機 AI Agent](#本機-codex-cli-與-ai-agent)。
 
 ![對話內K線技術訊號引導](web/public/images/screenshots/ai-chat-chart.png)
 
@@ -299,7 +299,7 @@ npm run verify:market-layout
 npm run verify:chips
 ```
 
-目前工作區 `npm test` 有 **35 項測試**，包含Session隔離、原生thread接續參數、SSE即時文字／權限／斷線續接／停止、資料工具、使用者成本與損益維度、K棒技術事件及前端資料規則。另已透過訂閱Codex實測獨立Session、接續與報告／K線工具，並用真實瀏覽器驗證Chat互動及1440／1024／390／320寬度。`verify:assistant`會建立測試對話並消耗訂閱額度；`verify:assistant-browser`使用前者保存的Session，會新增介面測試對話與訊息。詳見[架構設計](docs/DESIGN.md#驗證與維護)。
+目前工作區 `npm test` 有 **39 項測試**，包含Session隔離、原生thread接續參數、SSE即時文字／權限／斷線續接／停止、資料工具、使用者成本與損益維度、K棒技術事件及前端資料規則。另已透過訂閱Codex實測獨立Session、接續與報告／K線工具，並用真實瀏覽器驗證Chat互動及1440／1024／390／320寬度。`verify:assistant`會建立測試對話並消耗訂閱額度；`verify:assistant-browser`使用前者保存的Session，會新增介面測試對話與訊息。詳見[架構設計](docs/DESIGN.md#驗證與維護)。
 
 `API_BASE_URL` 可指定 API 驗證位址；`WEB_BASE_URL` 可讓服務驗證同時檢查前端。`BASE_URL` 用於瀏覽器驗證，例如改測 `4173` 建置預覽。
 

@@ -111,6 +111,9 @@ const stamp = (value) =>
     ? new Date(value).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })
     : "未查詢市場資料";
 const labels = {
+  screen_market_stocks: "全市場價量篩選",
+  search_stocks: "股票目錄",
+  get_market_data: "大盤市場",
   get_stock_quote: "個股行情與五檔",
   get_stock_data: "平台資料",
   get_financial_history: "歷年財務",
@@ -201,7 +204,7 @@ export function renderConversation(session, openArtifact, ask) {
       el("h3", "想研究什麼，直接告訴我"),
       el(
         "p",
-        "可以說「分析凱基金」、「比較友達與群創」，或問大盤與投資概念。我會辨識標的、按需查資料，必要時提供報告與K線。",
+        "可以說「分析凱基金」、「比較友達與群創」、「找100元以下的成交量前五名」，或問大盤與投資概念。我會按需查資料，必要時提供報告與K線。",
       ),
       el("small", "新對話各自獨立；不會自動生成整份報告。"),
     );
@@ -218,11 +221,26 @@ export function renderConversation(session, openArtifact, ask) {
     const body = el("div", null, "chat-answer");
     if (turn.answer) markdown(body, turn.answer);
     else if (turn.status === "running") {
-      for (const draft of turn.drafts || []) markdown(body, draft.text);
+      for (const draft of turn.drafts || []) {
+        const part = el("div", null, "chat-stream-part");
+        part.dataset.messageId = draft.id;
+        markdown(part, draft.text);
+        body.append(part);
+      }
       if (!body.childElementCount)
         body.append(el("p", "正在理解問題與選擇資料…", "chat-thinking"));
     } else body.append(el("p", turn.error || "本次回覆已停止。", "chat-error"));
     ai.append(body);
+    if (turn.status === "running") {
+      const activity = el(
+        "p",
+        (turn.events || []).filter((e) => e.type === "progress").at(-1)
+          ?.message || "正在理解問題與選擇資料…",
+        "chat-inline-activity",
+      );
+      activity.setAttribute("role", "status");
+      ai.append(activity);
+    }
     const skills = turn.tool_calls.filter(
       (c) => c.category === "skill" && c.status === "completed",
     );

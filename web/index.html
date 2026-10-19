@@ -1323,6 +1323,14 @@
                     </div>
                     <div class="chat-thread-actions">
                       <button
+                        id="chatLatest"
+                        class="quiet"
+                        type="button"
+                        hidden
+                      >
+                        ↓ 最新訊息
+                      </button>
+                      <button
                         id="chatRename"
                         class="quiet"
                         type="button"
@@ -1336,7 +1344,7 @@
                     id="chatMessages"
                     class="chat-messages"
                     role="log"
-                    aria-label="AI看盤對話"
+                    aria-label="股票助手對話"
                     aria-live="polite"
                   ></div>
                   <div id="chatActivity" class="chat-activity" hidden>
@@ -1355,6 +1363,12 @@
                   </p>
                   <form id="assistantMessageForm" class="chat-composer">
                     <div class="chat-prompts">
+                      <button
+                        type="button"
+                        data-chat-prompt="找出收盤價100元以下、成交量至少1000張的上市與上櫃股票，依成交量列出前5名；請標示資料日期與涵蓋範圍。"
+                      >
+                        價量選股
+                      </button>
                       <button
                         type="button"
                         data-chat-prompt="請比較友達與群創目前的優勢、風險與需要觀察的條件，缺少資料請清楚說明。"

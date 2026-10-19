@@ -107,6 +107,16 @@ test("Chat SSE需解鎖、即時文字與活動、斷線不取消、重連續接
       text += new TextDecoder().decode((await reader.read()).value);
     }
     assert.ok(text.includes("先看量價"));
+    options.onMessage({ id: "item_3", text: "先看量價，再看資料日期。" });
+    options.onMessage({ id: "item_3", text: "先看量價，再看資料日期。" });
+    const live = (await (await fetch(base + path, { headers })).json())
+      .turns[0];
+    assert.equal(live.drafts.length, 1);
+    assert.equal(live.drafts[0].text, "先看量價，再看資料日期。");
+    assert.equal(
+      live.events.filter((e) => e.type === "assistant_text").length,
+      2,
+    );
     await reader.cancel();
     reader = null;
     assert.equal(

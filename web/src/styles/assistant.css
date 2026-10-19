@@ -77,9 +77,9 @@ body[data-page="assistant"] .sidebar-note {
 .chat-shell {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
-  min-height: 620px;
-  height: calc(100dvh - 280px);
-  max-height: 1050px;
+  min-height: 320px;
+  height: calc(100dvh - 190px);
+  max-height: none;
   border: 1px solid #284156;
   border-radius: 16px;
   overflow: hidden;
@@ -199,8 +199,9 @@ body[data-page="assistant"] .sidebar-note {
   overflow-x: hidden;
   padding: 24px clamp(15px, 4vw, 65px);
   flex: 1;
-  min-height: 150px;
-  scroll-behavior: smooth;
+  min-height: 120px;
+  color: #dfedf8;
+  scroll-behavior: auto;
   overscroll-behavior: contain;
 }
 .chat-welcome {
@@ -233,7 +234,8 @@ body[data-page="assistant"] .sidebar-note {
 .chat-message {
   margin: 0 0 30px;
   line-height: 1.9;
-  font-size: 16px;
+  font-size: 17px;
+  color: #dfedf8;
   overflow-wrap: anywhere;
 }
 .chat-message > small {
@@ -281,6 +283,34 @@ body[data-page="assistant"] .sidebar-note {
 }
 .chat-thinking {
   color: #8caabd;
+}
+.chat-inline-activity {
+  color: #8dcfc9;
+  font-size: 13px;
+  padding: 8px 0;
+  margin: 0;
+}
+.chat-inline-activity::before {
+  content: "●";
+  display: inline-block;
+  margin-right: 8px;
+  animation: chat-pulse 1.5s ease-in-out infinite;
+}
+#chatActivity {
+  display: none;
+}
+.chat-thread-heading > div:first-child {
+  min-width: 0;
+}
+.chat-thread-heading h3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.chat-thread-heading #chatScope {
+  max-height: 40px;
+  overflow: auto;
 }
 .chat-error {
   color: #f3bd9a;
@@ -440,9 +470,9 @@ body[data-page="assistant"] .sidebar-note {
 }
 .chat-composer textarea {
   width: 100%;
-  resize: vertical;
-  min-height: 78px;
-  max-height: 180px;
+  resize: none;
+  min-height: 54px;
+  max-height: 120px;
   padding: 13px 15px;
   border: 1px solid #3c657b;
   border-radius: 12px;
@@ -597,6 +627,14 @@ body[data-page="assistant"] .sidebar-note {
     padding: 20px;
   }
 }
+@media (max-width: 1023px) {
+  body[data-page="assistant"] .workspace > .sidebar {
+    display: none;
+  }
+  body[data-page="assistant"] .workspace {
+    min-height: 0;
+  }
+}
 @media (max-width: 799px) {
   .assistant-panel {
     padding: 12px;
@@ -614,8 +652,8 @@ body[data-page="assistant"] .sidebar-note {
   .chat-shell {
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - 240px);
-    min-height: 650px;
+    height: calc(100dvh - 190px);
+    min-height: 320px;
     max-height: none;
   }
   .chat-sidebar {
@@ -623,7 +661,7 @@ body[data-page="assistant"] .sidebar-note {
     border-right: 0;
     border-bottom: 1px solid #284156;
     padding: 12px;
-    max-height: 260px;
+    max-height: 180px;
   }
   .chat-sidebar > summary {
     cursor: pointer;
@@ -642,6 +680,44 @@ body[data-page="assistant"] .sidebar-note {
   }
   .chat-thread-heading h3 {
     font-size: 18px;
+  }
+  .chat-thread-heading {
+    padding: 9px 12px;
+    gap: 5px;
+  }
+  .chat-thread-heading #chatScope {
+    display: none;
+  }
+  .chat-page-heading p {
+    display: none;
+  }
+  .chat-page-heading {
+    margin-bottom: 8px;
+  }
+  .chat-prompts {
+    display: none;
+  }
+  .chat-composer label {
+    font-size: 12px;
+  }
+  .chat-composer textarea {
+    height: 56px;
+  }
+  .chat-composer-footer small {
+    display: none;
+  }
+  .chat-composer-footer {
+    justify-content: end;
+    padding-top: 5px;
+  }
+  .chat-message {
+    font-size: 16px;
+  }
+  .chat-thread-heading h3 {
+    -webkit-line-clamp: 1;
+  }
+  .chat-sidebar[open] .chat-new-session {
+    padding: 7px 0;
   }
   .chat-thread-actions {
     width: 100%;

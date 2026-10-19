@@ -60,7 +60,9 @@ agent/AGENTS.md維護精簡對話規則，chat-adapter.js負責Session提示與C
 | web/src/models、views、controllers                                | 前端狀態、DOM／SVG呈現、互動與請求取消                   |
 | web/src/views/orderbook-view.js                                   | 個股與期貨共用五檔、深度色帶、缺值與委託合計             |
 
-Agent以GET /api/assistant/sessions/:id/events提供SSE活動、已完成的文字段落及研究卡片。事件使用Session內遞增ID，重連可續接，10秒心跳，另有輪詢恢復；不轉送推理或逐Token。每輪完成／取消／失敗後保存，活躍Session由記憶體回應。
+Agent以GET /api/assistant/sessions/:id/events提供SSE活動、文字段落及研究卡片。CLI若提供agent_message的started／updated／completed文字，皆立即轉發；同message_id採更新而非重複附加。這不是保證逐Token的介面，仍取決於CLI何時輸出文字。事件使用Session內遞增ID，重連可續接，10秒心跳，另有輪詢恢復；不轉送推理。查詢進度直接放在當則回覆內。每輪完成／取消／失敗後保存，活躍Session由記憶體回應。
+
+全市場選股由api/market-screen.js提供GET /api/market/screen；Agent的screen_market_stocks透過HTTP使用此端點，不直接抓官方來源。來源為TWSE STOCK_DAY_ALL與TPEx tpex_mainboard_daily_close_quotes，伺服器快取5分鐘；過期後來源失敗不回傳舊快取。股票與ETF分流，排除權證及ETN，股數／元／百分比各有明確欄位；不混合不同交易日期排名。回傳來源、接收時間、各日期涵蓋市場、母體數、符合數與分頁；來源失敗或日期不一則complete=false。這是最新官方日資料，不支援盤中全市場推播或歷史截止選股。
 
 ## AI 工具邊界
 

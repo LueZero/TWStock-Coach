@@ -134,6 +134,8 @@ function renderActivity() {
   const activities = (turn?.events || []).filter((e) => e.type === "progress");
   $("chatStage").textContent =
     activities.at(-1)?.message || (running ? "AI 正在分析" : "本次回覆已結束");
+  const inline = $("chatMessages").querySelector(".chat-inline-activity");
+  if (inline) inline.textContent = $("chatStage").textContent;
   $("chatEvents").replaceChildren(
     ...activities
       .slice(-60)
@@ -192,14 +194,29 @@ function watch(id, v) {
     turn.events.push({ ...data, type });
     if (turn.events.length > 300) turn.events.shift();
     if (type === "assistant_text") {
-      turn.drafts.push({ id: data.id, text: data.text });
+      const messageId = data.message_id || String(data.id);
+      const draft = turn.drafts.find((d) => d.id === messageId);
+      if (draft) draft.text = data.text;
+      else turn.drafts.push({ id: messageId, text: data.text });
       const body = $("chatMessages").querySelector(
         `[data-turn-id="${turn.id}"] .chat-answer`,
       );
       if (body) {
+        const box = $("chatMessages");
+        const following =
+          box.scrollHeight - box.scrollTop - box.clientHeight < 180;
         body.querySelector(".chat-thinking")?.remove();
-        markdown(body, data.text);
-        scrollBottom();
+        let part = Array.from(body.children).find(
+          (node) => node.dataset.messageId === messageId,
+        );
+        if (!part) {
+          part = el("div", null, "chat-stream-part");
+          part.dataset.messageId = messageId;
+          body.append(part);
+        }
+        part.replaceChildren();
+        markdown(part, data.text);
+        if (following) scrollBottom(true);
       }
     } else if (type === "artifact") {
       if (!turn.artifacts.some((a) => a.id === data.artifact.id)) {
@@ -364,6 +381,33 @@ async function checkService() {
   }
 }
 export function initAssistantController() {
+  let compact = window.innerWidth < 800;
+  const fitChat = () => {
+    if (document.body.dataset.page !== "assistant") return;
+    const nextCompact = window.innerWidth < 800;
+    if (nextCompact && !compact) $("chatSessionDrawer").open = false;
+    compact = nextCompact;
+    const shell = document.querySelector(".chat-shell");
+    const height = window.visualViewport?.height || window.innerHeight;
+    shell.style.height = `${Math.max(320, height - shell.getBoundingClientRect().top - 12)}px`;
+  };
+  window.addEventListener("resize", fitChat);
+  window.visualViewport?.addEventListener("resize", fitChat);
+  const layoutObserver = new ResizeObserver(fitChat);
+  layoutObserver.observe($("assistantLogin"));
+  layoutObserver.observe(document.querySelector(".chat-page-heading"));
+  document.addEventListener("stock-coach:section", () =>
+    requestAnimationFrame(fitChat),
+  );
+  $("chatSessionDrawer").addEventListener("toggle", () => {
+    fitChat();
+  });
+  $("chatMessages").addEventListener("scroll", () => {
+    const box = $("chatMessages");
+    $("chatLatest").hidden =
+      box.scrollHeight - box.scrollTop - box.clientHeight < 180;
+  });
+  $("chatLatest").onclick = () => scrollBottom(true);
   $("chatNewCutoff").max = taipeiDay();
   $("chatNewCutoff").value = taipeiDay();
   $("chatNewMode").onchange = () => {

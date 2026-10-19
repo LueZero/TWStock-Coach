@@ -203,10 +203,15 @@ async function until(expression, timeout = 60000) {
       ),
     );
     await evaluate(`document.getElementById('chatArtifactClose').click()`);
-    for (const width of [1024, 390, 320]) {
+    for (const [width, height] of [
+      [1440, 800],
+      [1024, 768],
+      [390, 844],
+      [320, 740],
+    ]) {
       await send("Emulation.setDeviceMetricsOverride", {
         width,
-        height: 1100,
+        height,
         deviceScaleFactor: 1,
         mobile: false,
       });
@@ -216,6 +221,11 @@ async function until(expression, timeout = 60000) {
       );
       assert.ok(sizes.body <= sizes.width + 1, JSON.stringify(sizes));
       assert.ok(sizes.thread > 200);
+      const chat = await evaluate(
+        `(()=>{const b=document.getElementById('chatMessages').getBoundingClientRect(),c=document.getElementById('assistantMessage').getBoundingClientRect(),s=document.querySelector('.chat-shell').getBoundingClientRect();return {height:b.height,bottom:c.bottom,viewport:innerHeight,shellTop:s.top,shellHeight:s.height,heading:document.querySelector('.chat-thread-heading').getBoundingClientRect().height,drawer:document.querySelector('.chat-sidebar').getBoundingClientRect().height,form:document.querySelector('.chat-composer').getBoundingClientRect().height};})()`,
+      );
+      assert.ok(chat.height >= 160, JSON.stringify(chat));
+      assert.ok(chat.bottom <= chat.viewport, JSON.stringify(chat));
     }
     await send("Emulation.setDeviceMetricsOverride", {
       width: 1440,
@@ -236,6 +246,18 @@ async function until(expression, timeout = 60000) {
       `document.getElementById('assistantMessage').value='介面測試第一問：只回覆「回答已保存」，不用查資料。';document.getElementById('assistantMessageForm').requestSubmit()`,
     );
     await until(`!document.getElementById('assistantCancel').hidden`);
+    await until(
+      `document.querySelector('.chat-answer')?.textContent.includes('串流更新已顯示')`,
+    );
+    assert.equal(
+      await evaluate(`document.querySelectorAll('.chat-stream-part').length`),
+      1,
+    );
+    assert.ok(
+      await evaluate(
+        `document.querySelector('.chat-inline-activity')?.getBoundingClientRect().height>0`,
+      ),
+    );
     await until(
       `!document.getElementById('assistantSend').disabled&&document.getElementById('chatMessages').textContent.includes('回答已保存')`,
     );

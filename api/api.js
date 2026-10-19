@@ -25,6 +25,7 @@ import { marketStatus, tradingRange } from "./trading.js";
 import { search, getQuote } from "./market.js";
 import { boardQuotes, boardIntraday, boardHistory } from "./market-board.js";
 import { marketChips } from "./market-chips.js";
+import { marketScreen } from "./market-screen.js";
 import { stockMediaRange } from "./media.js";
 import { view as financialView, saveSnapshot } from "./fundamentals.js";
 import { view as equityView } from "./equity.js";
@@ -342,6 +343,7 @@ export async function createApp({ logger = false } = {}) {
     if (typeof q !== "string" || q.length > 40) fail("搜尋內容最多40字");
     return search(q.trim());
   });
+  get("/api/market/screen", (request) => marketScreen(request.query));
   post("/api/calculator", (request) => calculator(request.body ?? {}));
   get("/api/quote/:market/:symbol", (request) => getQuote(...pair(request)));
   get("/api/intraday/:market/:symbol", async (request) => {

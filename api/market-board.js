@@ -1,16 +1,16 @@
-import {
-  fetchJSON,
-  num,
-  validDate,
-  taipeiDay,
-  digest,
-  addDays,
-} from "./lib.js";
-import { rows, query } from "./db.js";
+import { fetchJSON, num, validDate, taipeiDay, addDays } from "./lib.js";
 import { FinMind } from "./providers.js";
 
 const cache = new Map();
 const pending = new Map();
+export function memorySnapshots() {
+  return [...cache.entries()].map(([source_key, e]) => ({
+    source_key,
+    id: `memory:${source_key}`,
+    received_at: e.value.received_at || new Date(e.at).toISOString(),
+    data: e.value,
+  }));
+}
 const numeric = (v) => {
   if (v == null || String(v).trim() === "") return null;
   return num(String(v).replaceAll(",", "").replace("%", ""));
@@ -128,26 +128,13 @@ export async function saved(key, ttl, load) {
   const task = (async () => {
     try {
       const value = await load();
-      const identity = { ...value };
-      delete identity.received_at;
-      if (identity.products)
-        identity.products = identity.products.map(({ received_at, ...p }) => p);
-      await query(
-        "INSERT INTO market_board_snapshots(source_key,digest,received_at,last_seen_at,data) VALUES($1,$2,now(),now(),$3) ON CONFLICT(source_key,digest) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at",
-        [key, digest(identity), JSON.stringify(value)],
-      );
+      value.storage = "memory";
+      value.database_used = false;
       cache.set(key, { at: Date.now(), value });
       if (cache.size > 500) cache.delete(cache.keys().next().value);
       return value;
     } catch (error) {
-      const old =
-        cache.get(key)?.value ||
-        (
-          await rows(
-            "SELECT data FROM market_board_snapshots WHERE source_key=$1 ORDER BY last_seen_at DESC,id DESC LIMIT 1",
-            [key],
-          )
-        )[0]?.data;
+      const old = cache.get(key)?.value;
       if (old)
         return {
           ...old,
@@ -200,6 +187,8 @@ export async function boardQuotes() {
     ),
   );
   return {
+    storage: "memory",
+    database_used: false,
     products: results.flatMap((r) =>
       r.status === "fulfilled"
         ? r.value.products.map((p) => ({ ...p, stale: r.value.stale || false }))
@@ -294,6 +283,8 @@ export async function boardHistory(product, start, end, contract) {
         (r) => r.trade_date >= warmupStart && r.trade_date < start,
       ),
       source_label: "證交所市場成交資訊",
+      storage: "memory",
+      database_used: false,
       warnings,
       note: "歷史日線為官方收盤指數；來源沒有開高低，不製作假的日K。成交量以股、成交金額以元呈現。",
     };

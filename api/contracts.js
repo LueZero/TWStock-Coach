@@ -105,9 +105,35 @@ const bar = object(
 export const protectedPaths = new Set(["/api/ingest", "/api/equity/import"]);
 export function contract(path, method) {
   const schema = { summary: path, tags: [path.split("/")[2] ?? "platform"] };
+  if (
+    [
+      "/api/ingest",
+      "/api/equity/import",
+      "/api/history/load",
+      "/api/fundamentals/load",
+      "/api/equity/load",
+      "/api/jobs",
+      "/api/jobs/:id",
+    ].includes(path)
+  ) {
+    schema.deprecated = true;
+    schema.description =
+      "已停用的相容介面；無資料庫或持久排程實作。原有金鑰驗證保留，寫入及載入請求回覆410，工作清單為空。";
+  }
   if (path.includes(":market"))
     schema.params = object(pair, ["market", "symbol"]);
   const queries = {
+    "/api/stock-data/:market/:symbol": object({
+      section: enumOf("chart", "financial", "equity", "basic"),
+      ...range,
+      resolution,
+      price_basis: basis,
+      session: enumOf("regular", "intraday_odd", "afterhours_odd"),
+      ma_periods: text,
+      as_of: stamp,
+      include_raw: enumOf("true", "false"),
+      background: enumOf("true", "false"),
+    }),
     "/api/market/screen": object({
       market: enumOf("ALL", "TWSE", "TPEX"),
       asset: enumOf("stock", "etf", "all"),
@@ -123,7 +149,12 @@ export function contract(path, method) {
       max_change_percent: text,
     }),
     "/api/market/chips": object({ date }),
-    "/api/media/:market/:symbol": object({ date, ...range, cursor: date }),
+    "/api/media/:market/:symbol": object({
+      date,
+      ...range,
+      cursor: date,
+      source: enumOf("all", "recent", "index"),
+    }),
     "/api/market/board/chart": object({
       product: enumOf("index", "day", "night"),
       mode: enumOf("intraday", "history"),

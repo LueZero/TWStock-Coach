@@ -1,10 +1,5 @@
-import { rows } from "./db.js";
-import { view as finances } from "./fundamentals.js";
-import { view as chips } from "./equity.js";
-import { report as peers } from "./peers.js";
 import { tradingRange } from "./trading.js";
-import { reportBars } from "./report-bars.js";
-import { quoteAt } from "./quote-store.js";
+
 import {
   assetType,
   institutionObservation,
@@ -51,16 +46,23 @@ export function validateAssistantInput(input = {}) {
   };
 }
 
-export async function buildSnapshot(input) {
+export async function buildSnapshot(input, readers = {}) {
+  for (const key of [
+    "instrument",
+    "bars",
+    "financial",
+    "equity",
+    "peers",
+    "external",
+    "quote",
+  ])
+    if (typeof readers[key] !== "function")
+      fail(`研究來源讀取器未設定：${key}`, 500);
   const q = validateAssistantInput(input),
     quality = [],
     facets = [],
     evidence = [];
-  const instruments = await rows(
-    "SELECT name,industry FROM instruments WHERE market=$1 AND symbol=$2",
-    [q.market, q.symbol],
-  );
-  const instrument = instruments[0];
+  const instrument = await readers.instrument(q.market, q.symbol);
   if (!instrument) fail("請先搜尋股票，載入股票目錄");
   evidence.push({
     id: "company:profile",
@@ -69,7 +71,7 @@ export async function buildSnapshot(input) {
     company_name: instrument.name,
     industry: instrument.industry,
   });
-  const bars = await reportBars(q);
+  const bars = await readers.bars(q);
   const completeEnd = q.end + "T13:30:00+08:00";
   const calendarEnd =
     Date.parse(q.as_of) < Date.parse(completeEnd) ? addDays(q.end, -1) : q.end;
@@ -89,9 +91,17 @@ export async function buildSnapshot(input) {
     quality.push({ severity: "warning", label: "交易日曆不可確認。" });
   }
   const tasks = await Promise.allSettled([
-    finances(q.market, q.symbol, q.as_of, false, q.end),
-    chips(q.market, q.symbol, q.start, q.end, q.as_of),
-    peers(q.market, q.symbol, q.end, "historical", "common", null, q.as_of),
+    readers.financial(q.market, q.symbol, q.as_of, false, q.end),
+    readers.equity(q.market, q.symbol, q.start, q.end, q.as_of),
+    readers.peers(
+      q.market,
+      q.symbol,
+      q.end,
+      "historical",
+      "common",
+      null,
+      q.as_of,
+    ),
   ]);
   const finance = tasks[0].status === "fulfilled" ? tasks[0].value : null;
   const equity = tasks[1].status === "fulfilled" ? tasks[1].value : null;
@@ -284,11 +294,8 @@ export async function buildSnapshot(input) {
         severity: "info",
         label: `${c.label}：${c.status}，未用假資料補齊。`,
       });
-  const external = await rows(
-    `SELECT DISTINCT ON(source_key) id,source_key,received_at,last_seen_at,data FROM market_board_snapshots WHERE received_at<=$1 AND (source_key IN ('quotes:day','quotes:night') OR source_key LIKE 'index-month:%' OR source_key LIKE 'market-chips:%' OR source_key LIKE $2) ORDER BY source_key,received_at DESC,id DESC`,
-    [q.as_of, `media:%:${q.market}:${q.symbol}:%`],
-  );
-  const quote = await quoteAt(q.market, q.symbol, q.as_of);
+  const external = await readers.external(q);
+  const quote = await readers.quote(q.market, q.symbol, q.as_of);
   if (quote)
     evidence.push({
       id: "quote:snapshot",

@@ -1226,7 +1226,7 @@ function metricCard(container, title, value, detail) {
 
 function renderFinancialDetails(data, historical, params) {
   $("financialStatus").textContent =
-    `${historical ? "歷史當時可得" : "最新取得修訂"} · 截止 ${localTime(data.as_of)} · 財報期間依各指標標示`;
+    `${historical ? "純API模式不提供歷史當時可得版本" : "最新來源資料／記憶體快取，無 DB"} · 查詢 ${localTime(data.as_of)} · 財報期間依各指標標示`;
   $("financialStatus").title = data.note;
   $("financialMetrics").replaceChildren();
   if (typeof renderFinancialResearch === "function")
@@ -1243,7 +1243,7 @@ function renderFinancialDetails(data, historical, params) {
   $("financialCoverage").textContent = data.coverage
     .map(
       (s) =>
-        `${s.label}：${s.status === "available" ? "已取得／修訂 " + s.revision + "／接收 " + localTime(s.received_at) : "未取得或此時尚不可用"}`,
+        `${s.label}：${s.status === "available" ? "來源 " + s.source + "／接收 " + localTime(s.received_at) : { queued: "等候來源查詢", loading: "來源查詢中", source_error: "來源請求失敗，稍後可重試", no_data: "來源回傳空資料" }[s.status] || "此時尚不可用"}`,
     )
     .join("；");
   $("revenueRows").replaceChildren();

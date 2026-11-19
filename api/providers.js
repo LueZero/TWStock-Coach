@@ -1,4 +1,6 @@
 import Decimal from "decimal.js";
+import { createHash } from "node:crypto";
+import { finMindError } from "./source-errors.js";
 import {
   addDays,
   taipeiDay,
@@ -6,71 +8,141 @@ import {
   validDate,
   num,
   sleep,
-  serialQueue,
   fetchJSON,
   fail,
 } from "./lib.js";
-import { validateBar } from "./service.js";
-const serialize = serialQueue();
+import { validateBar } from "./bar-validation.js";
+import { createSourceBudget } from "./source-budget.js";
+import { sourceQueue } from "./source-queue.js";
+const serialize = sourceQueue();
+const denied = new Map();
+export const prioritizeSourceGroup = (key) => serialize.promote(key, 2);
+const configuredBudget = Number(process.env.FINMIND_HOURLY_BUDGET || 300);
+const requestBudget = createSourceBudget(
+  Number.isSafeInteger(configuredBudget) && configuredBudget > 0
+    ? configuredBudget
+    : 300,
+);
 let lastRequest = 0;
+let queuedRequests = 0,
+  activeRequest = null;
+export const sourceActivity = () => ({
+  queued: queuedRequests,
+  budget: requestBudget.status(),
+  active: activeRequest
+    ? {
+        dataset: activeRequest.dataset,
+        elapsed_ms: Date.now() - activeRequest.started,
+      }
+    : null,
+});
 export class FinMind {
   constructor(fetcher = fetch, { signal } = {}) {
     this.fetcher = fetcher;
     this.signal = signal;
-    const interval = Number(process.env.FINMIND_REQUEST_INTERVAL ?? 8);
+    const interval = Number(process.env.FINMIND_REQUEST_INTERVAL ?? 1);
     this.interval =
-      (Number.isFinite(interval) ? Math.max(1, interval) : 8) * 1000;
+      (Number.isFinite(interval) ? Math.max(1, interval) : 1) * 1000;
   }
-  async request(endpoint, params) {
-    return serialize(async () => {
-      for (let attempt = 0; attempt < 4; attempt++) {
-        this.signal?.throwIfAborted();
-        await sleep(Math.max(0, this.interval - (Date.now() - lastRequest)));
-        this.signal?.throwIfAborted();
-        lastRequest = Date.now();
-        let response;
-        try {
-          response = await this.fetcher(
-            endpoint + "?" + new URLSearchParams(params),
-            {
-              signal: this.signal
-                ? AbortSignal.any([AbortSignal.timeout(45000), this.signal])
-                : AbortSignal.timeout(45000),
-              headers: process.env.FINMIND_TOKEN
-                ? { Authorization: "Bearer " + process.env.FINMIND_TOKEN }
-                : {},
-            },
-          );
-        } catch {
-          this.signal?.throwIfAborted();
-          if (attempt === 3) throw Error("FinMind transport unavailable");
-          await sleep(2 ** attempt * 1000);
-          continue;
-        }
-        if (
-          (response.status === 429 || response.status >= 500) &&
-          attempt < 3
-        ) {
-          await sleep(2 ** attempt * 5000);
-          continue;
-        }
-        if (!response.ok)
-          throw Error(
-            `FinMind HTTP ${response.status}; check entitlement/quota`,
-          );
-        const body = await response.json();
-        if (body.status !== 200 || !Array.isArray(body.data))
-          throw Error("FinMind dataset unavailable; check entitlement/quota");
-        return body.data;
-      }
-      throw Error("FinMind retry budget exhausted");
-    });
+  async request(
+    endpoint,
+    params,
+    {
+      priority = params.dataset === "TaiwanStockNews" ? 0 : 1,
+      key = null,
+    } = {},
+  ) {
+    const credential = createHash("sha256")
+      .update(process.env.FINMIND_TOKEN || "anonymous")
+      .digest("hex");
+    const accessKey = `${credential}:${params.dataset || endpoint}`;
+    const blocked = denied.get(accessKey);
+    if (blocked && Date.now() - blocked.at < 1800000) throw blocked.error;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      // Queue each attempt separately: a failing dataset must not hold the
+      // entire provider queue throughout all of its retries and backoff.
+      queuedRequests++;
+      const result = await serialize(
+        async () => {
+          queuedRequests--;
+          activeRequest = {
+            dataset: params.dataset || "TaiwanStockTradingDailyReport",
+            started: Date.now(),
+          };
+          try {
+            const blocked = denied.get(accessKey);
+            if (blocked && Date.now() - blocked.at < 1800000)
+              throw blocked.error;
+            this.signal?.throwIfAborted();
+            await sleep(
+              Math.max(0, this.interval - (Date.now() - lastRequest)),
+            );
+            this.signal?.throwIfAborted();
+            requestBudget.consume();
+            lastRequest = Date.now();
+            let response;
+            try {
+              response = await this.fetcher(
+                endpoint + "?" + new URLSearchParams(params),
+                {
+                  signal: this.signal
+                    ? AbortSignal.any([AbortSignal.timeout(45000), this.signal])
+                    : AbortSignal.timeout(45000),
+                  headers: process.env.FINMIND_TOKEN
+                    ? { Authorization: "Bearer " + process.env.FINMIND_TOKEN }
+                    : {},
+                },
+              );
+            } catch {
+              this.signal?.throwIfAborted();
+              if (attempt === 3) throw Error("FinMind transport unavailable");
+              return { retryAfter: 2 ** attempt * 1000 };
+            }
+            if (
+              (response.status === 429 || response.status >= 500) &&
+              attempt < 3
+            ) {
+              return { retryAfter: 2 ** attempt * 5000 };
+            }
+            const body = await response.json().catch(() => ({}));
+            if (
+              !response.ok ||
+              body.status !== 200 ||
+              !Array.isArray(body.data)
+            ) {
+              const error = finMindError(
+                response.ok ? body.status || 502 : response.status,
+                body,
+              );
+              if (["SOURCE_PERMISSION", "SOURCE_AUTH"].includes(error.code)) {
+                if (denied.size >= 128)
+                  denied.delete(denied.keys().next().value);
+                denied.set(accessKey, { at: Date.now(), error });
+              }
+              throw error;
+            }
+            return { data: body.data };
+          } finally {
+            activeRequest = null;
+          }
+        },
+        priority,
+        key,
+      );
+      if (result.data) return result.data;
+      await sleep(result.retryAfter);
+    }
+    throw Error("FinMind retry budget exhausted");
   }
-  get(dataset, params = {}) {
-    return this.request("https://api.finmindtrade.com/api/v4/data", {
-      dataset,
-      ...params,
-    });
+  get(dataset, params = {}, options = {}) {
+    return this.request(
+      "https://api.finmindtrade.com/api/v4/data",
+      {
+        dataset,
+        ...params,
+      },
+      options,
+    );
   }
   branches(symbol, day) {
     return this.request(
@@ -126,6 +198,15 @@ export class FinMind {
     const items = await this.get("TaiwanStockKBar", {
         data_id: symbol,
         start_date: day,
+      }).catch((error) => {
+        if (error.code === "SOURCE_PERMISSION")
+          throw Object.assign(
+            Error(
+              "分鐘 K 需 FinMind Sponsor 權限；目前帳戶無此權限。可使用日、週、月 K。",
+            ),
+            { code: error.code, statusCode: error.statusCode },
+          );
+        throw error;
       }),
       bars = [],
       rejected = [];
@@ -284,7 +365,12 @@ export async function tdccDistribution(symbol) {
   }
   return parseDistribution(tdccCache.records, symbol);
 }
-export async function etfHoldings(provider, symbol, end) {
+export async function etfHoldings(
+  provider,
+  symbol,
+  end,
+  start = addDays(end, -1826),
+) {
   const codes = [
     ...new Set(
       (process.env.ETF_WATCHLIST ?? "")
@@ -303,8 +389,7 @@ export async function etfHoldings(provider, symbol, end) {
   for (const code of codes) {
     const items = await provider.get("TaiwanStockActiveETFHolding", {
       data_id: code,
-      start_date:
-        addDays(end, -1826) > "2025-05-05" ? addDays(end, -1826) : "2025-05-05",
+      start_date: start > "2025-05-05" ? start : "2025-05-05",
       end_date: end,
     });
     for (const r of items) {

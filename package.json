@@ -10,8 +10,7 @@
     "technical-analysis",
     "financial-analysis",
     "vite",
-    "fastify",
-    "postgresql"
+    "fastify"
   ],
   "private": true,
   "type": "module",
@@ -30,17 +29,12 @@
     "dev": "npm run dev --workspace @twstock-coach/web",
     "build": "npm run build --workspace @twstock-coach/web",
     "preview": "npm run preview --workspace @twstock-coach/web",
-    "init": "node api/cli.js init",
-    "schedule": "node api/cli.js schedule",
-    "sync": "node api/cli.js sync",
     "test": "node --test agent/tests/*.test.js web/tests/*.test.js",
     "verify": "node scripts/verify_stack.js",
-    "verify:browser": "node scripts/verify_browser.cjs",
+    "verify:browser": "node scripts/verify_source_mode.cjs",
     "setup": "node scripts/setup_env.js",
     "format": "prettier --write api agent web/src web/index.html web/vite.config.js web/package.json scripts/*.js web/tests/*.test.js package.json compose.yaml",
     "format:check": "prettier --check api agent web/src web/index.html web/vite.config.js web/package.json scripts/*.js web/tests/*.test.js package.json compose.yaml",
-    "verify:db": "node --test api/tests/integration.database.js",
-    "verify:worker": "node scripts/verify_worker.js",
     "verify:market": "node scripts/verify_market_board.cjs",
     "verify:market-layout": "node scripts/verify_market_layout.cjs",
     "verify:chips": "node scripts/verify_chip_workspace.cjs"
@@ -51,8 +45,7 @@
     "@modelcontextprotocol/sdk": "1.32.1",
     "decimal.js": "10.6.0",
     "fast-xml-parser": "5.11.2",
-    "fastify": "5.12.5",
-    "pg": "8.23.1"
+    "fastify": "5.12.5"
   },
   "devDependencies": {
     "prettier": "3.9.10",

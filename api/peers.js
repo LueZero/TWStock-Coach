@@ -1,4 +1,3 @@
-import { rows } from "./db.js";
 import { summarize, DATASETS } from "./fundamentals.js";
 import { now, num, median, daysBetween, fail } from "./lib.js";
 export const FIELDS = [
@@ -49,8 +48,14 @@ export async function report(
   alignment = "common",
   requested = null,
   cutoffStamp = null,
+  readers = {},
 ) {
-  const all = await rows("SELECT * FROM instruments ORDER BY symbol"),
+  if (
+    typeof readers.instruments !== "function" ||
+    typeof readers.snapshots !== "function"
+  )
+    fail("同業來源讀取器未設定", 500);
+  const all = await readers.instruments(),
     target = all.find((i) => key(i) === market + ":" + symbol);
   if (!target) fail("股票目錄尚無此代號，請先搜尋股票");
   const receipt =
@@ -60,10 +65,7 @@ export async function report(
             Math.min(Date.parse(reference + "T23:59:59.999+08:00"), Date.now()),
           ).toISOString()
         : now()),
-    snaps = await rows(
-      "SELECT * FROM fundamental_snapshots WHERE dataset=ANY($1) AND received_at<=$2 ORDER BY id DESC",
-      [Object.keys(DATASETS), receipt],
-    ),
+    snaps = await readers.snapshots(Object.keys(DATASETS), receipt),
     available = new Set(snaps.map(key)),
     group = GROUPS.find((g) => g.members.includes(key(target))),
     business = (i) => group?.members.includes(key(i)) ?? false,

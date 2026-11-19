@@ -21,6 +21,8 @@ import { mediaChanged } from "./media-controller.js";
 
 let financeStock = "",
   financeVersion = 0;
+let financeTimer,
+  financePollVersion = 0;
 
 let simulationSignature = "",
   backtestVersion = 0;
@@ -66,17 +68,19 @@ function analysisChanged() {
   const key = stockKey();
   if (financeStock !== key) {
     financeStock = key;
+    financePollVersion++;
+    clearTimeout(financeTimer);
     state.financialData = null;
     if (typeof renderFinancialResearch === "function")
       renderFinancialResearch(null);
-    $("financialSummary").textContent = "正在取得這檔股票的財務資料…";
+    $("financialSummary").textContent = "進入財務分析後向來源取得資料。";
     $("financialMetrics").replaceChildren();
     $("financialCoverage").textContent = "";
     $("revenueRows").replaceChildren();
     $("financialPeriods").textContent = "";
     $("financialRaw").removeAttribute("href");
-    $("financialStatus").textContent = "正在取得這檔股票的財務資料…";
-    loadFinancials();
+    $("financialStatus").textContent = "進入財務分析後向來源取得資料。";
+    if ($("dashboardGrid").dataset.view === "financial") loadFinancials();
   }
   const signature = JSON.stringify([
     key,
@@ -94,7 +98,7 @@ function analysisChanged() {
   if (typeof utilitiesChanged === "function") utilitiesChanged();
 }
 
-async function refreshFinancialView() {
+async function refreshFinancialView(managed = false) {
   const version = ++financeVersion,
     key = stockKey(),
     bar = analysisBar();
@@ -117,13 +121,17 @@ async function refreshFinancialView() {
   }
   const params = historical ? "?as_of=" + encodeURIComponent(cutoff) : "";
   try {
-    const data = await analysisJson(
-      `/api/fundamentals/${state.stock.market}/${state.stock.symbol}${params}`,
+    const response = await analysisJson(
+      managed
+        ? `/api/stock-data/${state.stock.market}/${state.stock.symbol}?section=financial${historical ? "&as_of=" + encodeURIComponent(cutoff) : ""}`
+        : `/api/fundamentals/${state.stock.market}/${state.stock.symbol}${params}`,
     );
+    const data = managed ? response.data : response;
     if (version !== financeVersion || key !== stockKey()) return;
     state.financialData = data;
     renderFinancialDetails(data, historical, params);
     if (typeof renderBasic === "function") renderBasic();
+    return managed ? response : null;
   } catch (error) {
     if (version === financeVersion && key === stockKey())
       $("financialStatus").textContent = error.message;
@@ -131,40 +139,44 @@ async function refreshFinancialView() {
 }
 
 async function loadFinancials() {
+  const version = ++financePollVersion;
+  clearTimeout(financeTimer);
   const key = stockKey();
   try {
-    await refreshFinancialView();
+    const response = await refreshFinancialView(true);
     if (key !== stockKey()) return;
-    const job = await analysisJson(
-      "/api/fundamentals/load",
-      postOptions({ market: state.stock.market, symbol: state.stock.symbol }),
-    );
-    if (key !== stockKey()) return;
-    if (["queued", "running"].includes(job.status))
-      pollFinancials(job.job_id, key, 0);
-    else {
-      await refreshFinancialView();
-    }
+    if (response?.state === "updating" && version === financePollVersion)
+      pollFinancials(version, key, 0);
+    else if (response?.update.message)
+      $("financialStatus").textContent += " " + response.update.message;
   } catch (error) {
     if (key === stockKey()) $("financialStatus").textContent = error.message;
   }
 }
 
 function pollFinancials(id, key, attempt) {
-  setTimeout(async () => {
-    if (key !== stockKey()) return;
+  financeTimer = setTimeout(async () => {
+    if (
+      key !== stockKey() ||
+      id !== financePollVersion ||
+      $("dashboardGrid").dataset.view !== "financial"
+    )
+      return;
     try {
-      const job = await analysisJson("/api/jobs/" + id);
+      if ($("financialMode").value === "historical") return;
+      const response = await refreshFinancialView(true);
       if (key !== stockKey()) return;
-      if (["queued", "running"].includes(job.status) && attempt < 180) {
+      if (!response) return;
+      const job = response.update;
+      if (response.state === "updating" && attempt < 180) {
         $("financialStatus").textContent =
-          `財務資料載入中，完成 ${Object.keys(job.details?.datasets || {}).length}／6 個來源資料集…`;
+          `財務資料載入中，完成 ${Object.values(job.details?.datasets || {}).filter((s) => ["success", "no_data"].includes(s.status)).length}／6 個來源資料集…`;
         pollFinancials(id, key, attempt + 1);
       } else {
-        await refreshFinancialView();
-        if (key !== stockKey()) return;
-        const failed = Object.values(job.details?.datasets || {}).filter(
-          (s) => s.status === "failed",
+        if (response.state === "updating")
+          $("financialStatus").textContent = "資料仍在更新，可稍後再次查詢。";
+        const failed = Object.values(job.details?.datasets || {}).filter((s) =>
+          ["failed", "source_error"].includes(s.status),
         ).length;
         if (failed)
           $("financialStatus").textContent +=
@@ -228,6 +240,11 @@ function selectSection(view, scroll = true) {
       ),
     );
   $("dashboardGrid").dataset.view = view;
+  if (view !== "financial") {
+    clearTimeout(financeTimer);
+    financePollVersion++;
+    financeVersion++;
+  }
   document.body.dataset.page = page;
   document.querySelector(".stock-header").hidden = page !== "stock";
   document.querySelector(".quote-strip").hidden = page !== "stock";
@@ -237,16 +254,17 @@ function selectSection(view, scroll = true) {
     main.hidden || side.hidden,
   );
   if (view === "overview") plot();
+  if (
+    view === "financial" &&
+    (!state.financialData || state.financialData.source_status === "updating")
+  )
+    loadFinancials();
   if (view === "indices") marketBoardChanged();
   mediaChanged();
   document.dispatchEvent(
     new CustomEvent("stock-coach:section", { detail: { view } }),
   );
-  if (
-    ["basic", "chips"].includes(view) &&
-    typeof researchChanged === "function"
-  )
-    researchChanged();
+  if (typeof researchChanged === "function") researchChanged();
   if (typeof utilitiesChanged === "function") utilitiesChanged();
   if (scroll)
     (view === "indices"

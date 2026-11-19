@@ -1,6 +1,5 @@
 import { num, sum, median, daysBetween, taipeiDay, now } from "./lib.js";
-import { snapshots } from "./fundamentals.js";
-import { rows as queryRows } from "./db.js";
+
 import { buildChipWorkspace } from "./chip-workspace.js";
 export const DATASETS = {
   CompanyProfile: ["公司基本資料", null],
@@ -252,8 +251,23 @@ export function chipSummary(data, start, end, market = "TWSE") {
   );
   return { metrics, history, details, branch_date: branchDate };
 }
-export async function view(market, symbol, start, end, cutoff = now()) {
-  const all = await snapshots(market, symbol, cutoff, Object.keys(DATASETS)),
+export async function view(
+  market,
+  symbol,
+  start,
+  end,
+  cutoff = now(),
+  readers = {},
+) {
+  for (const key of ["snapshots", "dailyPrices", "instrument"])
+    if (typeof readers[key] !== "function")
+      throw Error(`籌碼來源讀取器未設定：${key}`);
+  const all = await readers.snapshots(
+      market,
+      symbol,
+      cutoff,
+      Object.keys(DATASETS),
+    ),
     selected = {};
   for (const s of all) selected[s.dataset] ??= s;
   const visibleEnd = end < taipeiDay(cutoff) ? end : taipeiDay(cutoff),
@@ -267,10 +281,7 @@ export async function view(market, symbol, start, end, cutoff = now()) {
       ]),
     ),
     result = chipSummary(data, start, visibleEnd, market),
-    dailyPrices = await queryRows(
-      "SELECT trade_date,close,volume FROM bars WHERE market=$1 AND symbol=$2 AND timeframe='1d' AND session='daily_aggregate' AND price_basis='raw' AND is_final=true AND trade_date BETWEEN $3::date-interval '90 days' AND $4::date AND received_at<=$5 ORDER BY trade_date",
-      [market, symbol, start, visibleEnd, cutoff],
-    );
+    dailyPrices = await readers.dailyPrices(market, symbol, start, visibleEnd);
   result.workspace = buildChipWorkspace(
     data,
     start,
@@ -278,12 +289,7 @@ export async function view(market, symbol, start, end, cutoff = now()) {
     result.details.institutions,
     dailyPrices,
   );
-  const instrument = (
-      await queryRows(
-        "SELECT * FROM instruments WHERE market=$1 AND symbol=$2",
-        [market, symbol],
-      )
-    )[0],
+  const instrument = await readers.instrument(market, symbol),
     reports = [...(data.AnalystTargetReport ?? [])].sort((a, b) =>
       a.date.localeCompare(b.date),
     ),

@@ -169,7 +169,7 @@ export function buildChipWorkspace(
         concentration20: rolling(20),
       };
     })
-    .filter(inside);
+    .filter((r) => inside(r) && r.net != null);
   // No count is inferred from a partial set of broker records.
   const margin = (data.TaiwanStockMarginPurchaseShortSale ?? [])
     .filter(inside)

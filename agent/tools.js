@@ -146,17 +146,19 @@ export function createStockTools(
       context: scope.context,
     }));
   const query = new URLSearchParams({
-    as_of: scope.as_of,
+    ...(scope.mode === "historical" ? { as_of: scope.as_of } : {}),
     start: scope.start,
     end: scope.end,
   });
-  const detail = (kind) => {
+  const detail = async (kind) => {
     if (!cache.has(kind))
       cache.set(
         kind,
         request(`/api/${kind}/${scope.market}/${scope.symbol}?${query}`),
       );
-    return cache.get(kind);
+    const result = await cache.get(kind);
+    if (result.source_status === "updating") cache.delete(kind);
+    return result;
   };
   function page(rows, offset, limit, reverse = false) {
     if (complete)

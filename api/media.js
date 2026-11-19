@@ -1,5 +1,5 @@
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import { rows } from "./db.js";
+import { getCatalog } from "./market.js";
 import { saved } from "./market-board.js";
 import { FinMind } from "./providers.js";
 import { taipeiDay, validDate, addDays, daysBetween, fail } from "./lib.js";
@@ -38,8 +38,26 @@ export async function stockMediaRange(
   loadDay = stockMedia,
 ) {
   const { start, end, cursor } = mediaRange(query);
+  const source = query.source || "all";
+  if (!["all", "recent", "index"].includes(source)) fail("新聞來源參數不符");
+  if (source === "recent") {
+    const page = await loadDay(market, symbol, start, { source, end });
+    return {
+      ...page,
+      start,
+      end,
+      page_start: start,
+      page_end: end,
+      next_cursor: null,
+      failed_dates: [],
+      notes: [
+        "近期公開文章依所選區間篩選；公司逐日索引另行載入，尚不代表完整區間。",
+        ...(page.notes || []).slice(1),
+      ],
+    };
+  }
   const pageEnd = cursor;
-  const page = await loadDay(market, symbol, cursor);
+  const page = await loadDay(market, symbol, cursor, { source });
   return {
     ...page,
     start,
@@ -174,13 +192,10 @@ async function feed(url, source) {
   }
   return parseFeed(Buffer.concat(chunks).toString("utf8"), source);
 }
-export async function stockMedia(market, symbol, requested) {
-  const instrument = (
-    await rows("SELECT name FROM instruments WHERE market=$1 AND symbol=$2", [
-      market,
-      symbol,
-    ])
-  )[0];
+export async function stockMedia(market, symbol, requested, options = {}) {
+  const instrument = (await getCatalog()).find(
+    (i) => i.market === market && i.symbol === symbol,
+  );
   if (!instrument)
     return {
       name: symbol,
@@ -191,13 +206,7 @@ export async function stockMedia(market, symbol, requested) {
       sources: [],
       warning: "尚未載入股票基本資料。",
     };
-  const latest = (
-    await rows(
-      "SELECT max(trade_date)::text AS day FROM bars WHERE market=$1 AND symbol=$2 AND timeframe='1d'",
-      [market, symbol],
-    )
-  )[0]?.day;
-  const date = validDate(requested || latest || taipeiDay()),
+  const date = validDate(requested || taipeiDay()),
     name = instrument.name;
   const specs = [
     [
@@ -270,31 +279,39 @@ export async function stockMedia(market, symbol, requested) {
         ),
     ]);
   const results = await Promise.all(
-    specs.map(async ([id, label, load]) => {
-      try {
-        const value = await saved(
-          `media:${id}:${market}:${symbol}:${id === "finmind" ? date : "recent"}`,
-          600000,
-          async () => ({
-            date,
-            received_at: new Date().toISOString(),
-            data: await load(),
-          }),
-        );
-        return { id, label, available: true, ...value };
-      } catch {
-        return {
-          id,
-          label,
-          available: false,
-          data: [],
-          warning: "來源暫時無法取得，沒有以其他股票或假資料替代。",
-        };
-      }
-    }),
+    specs
+      .filter(([id]) =>
+        options.source === "recent"
+          ? id !== "finmind"
+          : options.source === "index"
+            ? id === "finmind"
+            : true,
+      )
+      .map(async ([id, label, load]) => {
+        try {
+          const value = await saved(
+            `media:${id}:${market}:${symbol}:${id === "finmind" ? date : "recent"}`,
+            600000,
+            async () => ({
+              date,
+              received_at: new Date().toISOString(),
+              data: await load(),
+            }),
+          );
+          return { id, label, available: true, ...value };
+        } catch {
+          return {
+            id,
+            label,
+            available: false,
+            data: [],
+            warning: "來源暫時無法取得，沒有以其他股票或假資料替代。",
+          };
+        }
+      }),
   );
   for (const source of results)
-    source.data = filterMediaRange(source.data, date, date);
+    source.data = filterMediaRange(source.data, date, options.end || date);
   const all = mergeMedia(
     results.flatMap((s) => s.data),
     Infinity,

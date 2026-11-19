@@ -4,7 +4,6 @@ import swaggerUI from "@fastify/swagger-ui";
 import metadata from "../package.json" with { type: "json" };
 import { createHash, timingSafeEqual } from "node:crypto";
 import { config } from "./config.js";
-import { rows, query } from "./db.js";
 import {
   stock,
   validDate,
@@ -14,29 +13,33 @@ import {
   fail,
   now,
   taipeiDay,
+  dailySourceEnd,
   addDays,
   daysBetween,
   num,
 } from "./lib.js";
 import { calculate as calculator } from "./calculator.js";
-import { barRows, ingest, SERIES } from "./service.js";
 import { aggregate, RESOLUTIONS } from "./charting.js";
 import { marketStatus, tradingRange } from "./trading.js";
-import { search, getQuote } from "./market.js";
+import { search, getQuote, getCatalog } from "./market.js";
 import { boardQuotes, boardIntraday, boardHistory } from "./market-board.js";
 import { marketChips } from "./market-chips.js";
 import { marketScreen } from "./market-screen.js";
 import { stockMediaRange } from "./media.js";
-import { view as financialView, saveSnapshot } from "./fundamentals.js";
-import { view as equityView } from "./equity.js";
-import { report as peerReport } from "./peers.js";
-import { enqueue } from "./jobs.js";
 import { evaluate, backtest } from "./strategy.js";
 import { forecast } from "./research.js";
 import { contract, protectedPaths } from "./contracts.js";
-import { buildSnapshot } from "./research-packet.js";
 import { buildRuleReport } from "./report-conditions.js";
 import { refreshLatestStock } from "./latest-data.js";
+import { directResearch } from "./direct-research.js";
+import { sourceActivity } from "./providers.js";
+import {
+  barsResource,
+  directBars,
+  directFinancial,
+  directEquity,
+  directPeers,
+} from "./direct-data.js";
 const choice = (v, values, fallback) => {
     v ??= fallback;
     if (!values.includes(v)) fail("參數不符：" + v);
@@ -63,7 +66,7 @@ const choice = (v, values, fallback) => {
     stock(request.params.market, request.params.symbol);
     return [request.params.market, request.params.symbol];
   };
-export async function chart(market, symbol, q) {
+export async function chart(market, symbol, q, wait = true) {
   dateRange(q);
   const resolution = choice(q.resolution, RESOLUTIONS, "1d"),
     basis = choice(q.price_basis, ["raw", "adjusted"], "raw"),
@@ -96,17 +99,18 @@ export async function chart(market, symbol, q) {
             ),
           ),
     ),
-    data = await barRows(market, symbol, {
+    source = barsResource(market, symbol, {
       timeframe: minute ? "1m" : "1d",
       session: minute ? session : "daily_aggregate",
       price_basis: basis,
       start: warmup,
       end: q.end,
-      limit: 50000,
     }),
     asOf = new Date(
       Math.min(Date.now(), Date.parse(addDays(q.end, 1) + "T00:00:00+08:00")),
     );
+  if (wait) await source.promise;
+  const data = source.value?.bars || [];
   return {
     data: aggregate(data, resolution, asOf, periods).filter(
       (r) => q.start <= r.trade_date && r.trade_date <= q.end,
@@ -114,7 +118,18 @@ export async function chart(market, symbol, q) {
     resolution,
     timezone: "Asia/Taipei",
     range: { start: q.start, end: q.end },
-    source_kind: minute ? "stored_minute_bars" : "stored_daily_bars",
+    source_kind: "source_api",
+    storage: "memory",
+    database_used: false,
+    source_state: source.pending
+      ? "updating"
+      : source.error
+        ? source.value
+          ? "partial"
+          : "unavailable"
+        : "ready",
+    source_warning: source.error || source.value?.warnings?.join("；") || null,
+    received_at: source.received_at || null,
     note: minute
       ? "分鐘資料需授權來源；沒有成交或缺漏分鐘不補零。聚合完成表示區間已結束，不保證資料無缺漏。"
       : "均線按所選週期的完成 K 線計算。",
@@ -228,6 +243,13 @@ export async function createApp({ logger = false } = {}) {
     requestTimeout: 60000,
     ajv: { customOptions: { coerceTypes: false } },
   });
+  app.addHook("preHandler", async (request) => {
+    if (
+      request.method === "POST" &&
+      ["/api/ingest", "/api/equity/import"].includes(request.url.split("?")[0])
+    )
+      fail("來源API模式停用資料庫匯入，未寫入任何資料", 410);
+  });
   await app.register(swagger, {
     openapi: {
       info: {
@@ -286,8 +308,14 @@ export async function createApp({ logger = false } = {}) {
   }));
   get("/openapi.json", () => app.swagger());
   get("/health", async () => {
-    await query("SELECT 1");
-    return { status: "ok", timezone: "Asia/Taipei", runtime: "nodejs" };
+    return {
+      status: "ok",
+      timezone: "Asia/Taipei",
+      runtime: "nodejs",
+      data_mode: "source_api",
+      source_activity: sourceActivity(),
+      database_used: false,
+    };
   });
   get("/api/market/status", () => marketStatus());
   get("/api/market/board", () => boardQuotes());
@@ -331,13 +359,7 @@ export async function createApp({ logger = false } = {}) {
       qint(request.query.sessions, 1, 240, 7, "交易日数"),
     );
   });
-  get("/api/instruments", () =>
-    rows(
-      "SELECT DISTINCT " +
-        SERIES.join(",") +
-        " FROM bars ORDER BY market,symbol",
-    ),
-  );
+  get("/api/instruments", () => getCatalog());
   get("/api/search", (request) => {
     const q = request.query.q ?? "";
     if (typeof q !== "string" || q.length > 40) fail("搜尋內容最多40字");
@@ -349,10 +371,7 @@ export async function createApp({ logger = false } = {}) {
   get("/api/intraday/:market/:symbol", async (request) => {
     const [market, symbol] = pair(request),
       day = validDate(request.query.day ?? taipeiDay()),
-      snapshots = await rows(
-        "SELECT data FROM quote_snapshots WHERE market=$1 AND symbol=$2 AND trade_date=$3 ORDER BY source_time LIMIT 5000",
-        [market, symbol, day],
-      );
+      snapshots = [];
     return {
       trade_date: day,
       kind: "sampled_snapshots",
@@ -372,72 +391,90 @@ export async function createApp({ logger = false } = {}) {
       ),
     };
   });
-  post("/api/history/load", async (request, reply) => {
-    reply.code(202);
-    return enqueue("history", request.body ?? {});
+  post("/api/history/load", async () =>
+    fail("來源API模式不使用DB工作佇列，請查詢stock-data資料接口", 410),
+  );
+  get("/api/stock-data/:market/:symbol", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const [market, symbol] = pair(request),
+      q = request.query;
+    const section = choice(
+      q.section,
+      ["chart", "financial", "equity", "basic"],
+      "chart",
+    );
+    const historical = Boolean(q.as_of);
+    if (historical) cutoff(q.as_of);
+    if (section === "chart") {
+      if (historical)
+        fail("K線區間回看不提供as_of修訂快照，請使用研究資料接口");
+      const resolution = choice(q.resolution, RESOLUTIONS, "1d");
+      const minute = resolution.endsWith("m") && resolution !== "1mo";
+      const data = await chart(market, symbol, q, false);
+      return {
+        data,
+        state: data.source_state,
+        storage: "memory",
+        database_used: false,
+        update: {
+          status:
+            data.source_state === "updating"
+              ? "running"
+              : data.source_state === "unavailable"
+                ? "failed"
+                : "success",
+          message: data.source_warning,
+        },
+      };
+    }
+    if (section === "financial")
+      return directFinancial(
+        market,
+        symbol,
+        q.as_of,
+        q.include_raw === "true",
+        q.background === "true",
+      );
+    dateRange(q, { future: false });
+    return directEquity(market, symbol, q.start, q.end, q.as_of, section);
   });
   get("/api/chart/:market/:symbol", (request) =>
     chart(...pair(request), request.query),
   );
-  get("/api/jobs", () =>
-    rows(
-      "SELECT id,name,status,started_at,finished_at,heartbeat_at,attempts,priority,details FROM job_runs ORDER BY id DESC LIMIT 50",
-    ),
+  get("/api/jobs", () => []);
+  get("/api/jobs/:id", async () => fail("來源API模式沒有DB工作紀錄", 410));
+  post("/api/fundamentals/load", async () =>
+    fail("來源API模式不使用DB工作佇列", 410),
   );
-  get("/api/jobs/:id", async (request) => {
-    const id = qint(
-        request.params.id,
-        1,
-        Number.MAX_SAFE_INTEGER,
-        null,
-        "工作編號",
-      ),
-      job = (
-        await rows("SELECT id,status,details FROM job_runs WHERE id=$1", [id])
-      )[0];
-    if (!job) fail("找不到載入工作", 404);
-    return job;
-  });
-  post("/api/fundamentals/load", async (request, reply) => {
-    reply.code(202);
-    return enqueue("fundamentals", request.body ?? {});
-  });
-  get("/api/fundamentals/:market/:symbol", (request) => {
+  get("/api/fundamentals/:market/:symbol", async (request) => {
     const flag = choice(request.query.include_raw, ["true", "false"], "false");
-    return financialView(
-      ...pair(request),
-      cutoff(request.query.as_of),
-      flag === "true",
-    );
+    if (request.query.as_of) cutoff(request.query.as_of);
+    return (
+      await directFinancial(
+        ...pair(request),
+        request.query.as_of,
+        flag === "true",
+      )
+    ).data;
   });
-  post("/api/equity/load", async (request, reply) => {
-    reply.code(202);
-    return enqueue("equity", request.body ?? {});
-  });
-  get("/api/equity/:market/:symbol", (request) => {
+  post("/api/equity/load", async () =>
+    fail("來源API模式不使用DB工作佇列", 410),
+  );
+  get("/api/equity/:market/:symbol", async (request) => {
     dateRange(request.query, { future: false });
-    return equityView(
-      ...pair(request),
-      request.query.start,
-      request.query.end,
-      cutoff(request.query.as_of),
-    );
+    if (request.query.as_of) cutoff(request.query.as_of);
+    return (
+      await directEquity(
+        ...pair(request),
+        request.query.start,
+        request.query.end,
+        request.query.as_of,
+      )
+    ).data;
   });
   post("/api/equity/import", async (request) => {
     authorize(request.headers["x-api-key"]);
-    const r = validateResearchImport(request.body ?? {}),
-      saved = await saveSnapshot(
-        r.market,
-        r.symbol,
-        r.dataset,
-        r.rows,
-        r.source,
-      );
-    return {
-      snapshot_id: saved.id,
-      revision: saved.revision,
-      received_at: new Date(saved.received_at).toISOString(),
-    };
+    fail("此匯入介面已移除；股票資料由來源 API 按需取得。", 410);
   });
   get("/api/peers/:market/:symbol", (request) => {
     const q = request.query,
@@ -454,7 +491,7 @@ export async function createApp({ logger = false } = {}) {
         ]).size > 400)
     )
       fail("比較代號格式不符或超過400檔");
-    return peerReport(
+    return directPeers(
       ...pair(request),
       reference,
       choice(q.view_mode, ["latest", "historical"], "latest"),
@@ -478,7 +515,11 @@ export async function createApp({ logger = false } = {}) {
         analysis: true,
       };
     if (o.start && o.end && o.start > o.end) fail("開始日期不能晚於截止");
-    const data = await barRows(...pair(request), o),
+    const data = await directBars(...pair(request), {
+        ...o,
+        start: o.start || addDays(taipeiDay(), -180),
+        end: o.end || taipeiDay(),
+      }),
       latest = data.at(-1);
     return {
       data,
@@ -516,7 +557,7 @@ export async function createApp({ logger = false } = {}) {
     const c = new Date(
         Math.min(Date.now(), Date.parse(row.end_time)),
       ).toISOString(),
-      financial = await financialView(r.market, r.symbol, c);
+      financial = (await directFinancial(r.market, r.symbol, c)).data;
     return {
       ...evaluate(
         row,
@@ -551,11 +592,13 @@ export async function createApp({ logger = false } = {}) {
   });
   get("/api/research/:market/:symbol", async (request) => {
     const data = (
-      await barRows(...pair(request), {
+      await directBars(...pair(request), {
         timeframe: "1d",
         session: "daily_aggregate",
         price_basis: "adjusted",
         limit: 1500,
+        start: addDays(taipeiDay(), -1826),
+        end: dailySourceEnd(),
       })
     ).filter((b) => b.is_final);
     return {
@@ -565,13 +608,7 @@ export async function createApp({ logger = false } = {}) {
   });
   post("/api/ingest", (request) => {
     authorize(request.headers["x-api-key"]);
-    if (
-      !Array.isArray(request.body) ||
-      request.body.length < 1 ||
-      request.body.length > 5000
-    )
-      fail("批次需包含1至5000根K線");
-    return ingest(request.body);
+    fail("此寫入介面已移除；股票資料由來源 API 按需取得。", 410);
   });
   app.post(
     "/api/research/report-input",
@@ -583,10 +620,10 @@ export async function createApp({ logger = false } = {}) {
         (body.mode || "latest") === "latest"
           ? await refreshLatestStock(body.market, body.symbol)
           : null;
-      const input = await buildSnapshot(request.body);
+      const input = await directResearch(request.body);
       if (refresh?.status === "stale")
         fail(
-          `最新日K尚未就緒：目前 ${refresh.data_date || "無資料"}，預期 ${refresh.expected_day}；更新工作 ${refresh.job_id} ${refresh.provider_status}，請稍後再試。`,
+          `最新日K尚未就緒：目前 ${refresh.data_date || "無資料"}，預期 ${refresh.expected_day}；來源狀態 ${refresh.provider_status}，請稍後再試。`,
           503,
         );
       if (refresh) input.latest_refresh = refresh;

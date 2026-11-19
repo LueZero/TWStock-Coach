@@ -611,6 +611,33 @@ export function renderChipWorkspace() {
     ? `${config.director ? "截止 " + data.end + " · 揭露月 " + ui.month : data.start + " ～ " + data.end} · ${config.rows.length} 筆觀測${dates.length && !config.director ? " · 最新 " + dates.at(-1) : ""}`
     : "正在載入所選股票…";
   $("chipSummary").replaceChildren();
+  const sourceNotices = config.sources
+    .map((key) => data?.coverage?.find((r) => r.dataset === key))
+    .filter(Boolean);
+  const notice = sourceNotices
+    .map(
+      (s) =>
+        s.message ||
+        {
+          permission_denied: "目前帳戶權限不足",
+          requires_token: "需設定 Token 與相應會員權限",
+          not_connected: "此來源尚未接入",
+          not_configured: "此來源尚未設定",
+          outside_range: "來源有資料，但不在選取區間",
+          invalid_token: "Token 無效或已失效",
+          quota_exceeded: "來源查詢額度暫時用完",
+        }[s.status] ||
+        "",
+    )
+    .filter(Boolean)
+    .join("；");
+  if (notice) {
+    const banner = node("p", "utility-note", notice);
+    banner.setAttribute("role", "status");
+    banner.style.gridColumn = "1 / -1";
+    banner.dataset.chipSourceNotice = "true";
+    $("chipSummary").append(banner);
+  }
   config.series.forEach((s) => {
     const values = config.rows.map((r) => r[s.key]).filter((v) => v != null);
     const cumulative =
@@ -678,7 +705,7 @@ export function renderChipWorkspace() {
     );
   else drawChart(config.rows, config.series);
   $("chipChartEmpty").textContent =
-    "此指標尚無可用觀測，請查看下方來源狀態；缺值不表示零。";
+    notice || "此指標尚無可用觀測，請查看下方來源狀態；缺值不表示零。";
   const head = node("tr");
   config.columns.forEach((c) => head.append(node("th", null, c.label)));
   $("chipTableHead").replaceChildren(head);
@@ -770,6 +797,15 @@ export function renderChipWorkspace() {
     const source = data?.coverage?.find((r) => r.dataset === key);
     const messages = {
       available: "已取得資料；仍需核對所選區間與筆數",
+      queued: "等候來源查詢，尚不能判定有無資料",
+      not_requested: "此頁未查詢",
+      outside_range: "來源有資料，但不在所選區間；最新週資料不能代替歷史週資料",
+      loading: "來源查詢中，尚不能判定有無資料",
+      source_error: "來源請求失敗，並非確認沒有資料",
+      permission_denied: "目前帳戶權限不足",
+      invalid_token: "Token 無效或已失效",
+      quota_exceeded: "來源額度或速率已達上限",
+      source_blocked: "來源暫時封鎖連線",
       requires_token: "需要 FinMind Token 與會員權限",
       not_connected: "來源尚未接入",
       not_configured: "尚未設定追蹤清單",
@@ -779,7 +815,7 @@ export function renderChipWorkspace() {
       node(
         "p",
         null,
-        `${source?.label ?? key}：${source ? (messages[source.status] ?? source.status) : "尚未載入"}${source?.received_at ? " · 接收 " + new Date(source.received_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" }) : ""}`,
+        `${source?.label ?? key}：${source ? (messages[source.status] ?? source.status) : "尚未載入"}${source?.message ? " · " + source.message : ""}${source?.source ? " · 來源 " + source.source : ""}${source?.received_at ? " · 接收 " + new Date(source.received_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" }) : ""}`,
       ),
     );
   });

@@ -8,9 +8,7 @@ import {
   fetchJSON,
   serialQueue,
 } from "./lib.js";
-import { rows, transaction } from "./db.js";
 import { FinMind } from "./providers.js";
-import { saveQuote } from "./quote-store.js";
 const number = (v) => {
     const n = num(v);
     return n != null && n >= 0 ? n : null;
@@ -19,6 +17,7 @@ const number = (v) => {
   serialize = serialQueue();
 let catalogAt = 0,
   catalogError = 0;
+let catalog = [];
 export function levels(prices, volumes) {
   const p = String(prices ?? "").split("_"),
     v = String(volumes ?? "").split("_");
@@ -101,6 +100,8 @@ export function quoteState(data, stamp = new Date()) {
             ? "snapshot"
             : "after_close";
   return {
+    storage: "memory",
+    database_used: false,
     ...result,
     state,
     state_label: {
@@ -132,10 +133,6 @@ export async function getQuote(market, symbol) {
       if (body.rtcode !== "0000" || !body.msgArray?.length)
         throw Error("No quote");
       const data = parseQuote(body.msgArray[0], market, symbol);
-      await transaction(async (client) => {
-        await client.query("SELECT pg_advisory_xact_lock(78241002)");
-        await saveQuote(client, data);
-      });
       quoteCache.set(k, { at: Date.now(), data });
       if (quoteCache.size > 200)
         quoteCache.delete(
@@ -146,18 +143,6 @@ export async function getQuote(market, symbol) {
       if (cached)
         return {
           ...quoteState(cached.data),
-          state: "unavailable",
-          state_label: "來源暫時無法更新，顯示上次快照",
-        };
-      const saved = (
-        await rows(
-          "SELECT data FROM quote_snapshots WHERE market=$1 AND symbol=$2 ORDER BY source_time DESC LIMIT 1",
-          [market, symbol],
-        )
-      )[0];
-      if (saved)
-        return {
-          ...quoteState(saved.data),
           state: "unavailable",
           state_label: "來源暫時無法更新，顯示上次快照",
         };
@@ -180,20 +165,16 @@ export async function refreshCatalog() {
             (i.date ?? "") > (latest[i.stock_id].date ?? ""))
         )
           latest[i.stock_id] = i;
-      await transaction(async (client) => {
-        for (const [symbol, i] of Object.entries(latest))
-          if (["twse", "tpex"].includes(i.type))
-            await client.query(
-              "INSERT INTO instruments(market,symbol,name,industry,updated_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(market,symbol) DO UPDATE SET name=EXCLUDED.name,industry=EXCLUDED.industry,updated_at=EXCLUDED.updated_at",
-              [
-                i.type === "twse" ? "TWSE" : "TPEX",
-                symbol,
-                i.stock_name || symbol,
-                i.industry_category || "",
-                now(),
-              ],
-            );
-      });
+      catalog = Object.entries(latest)
+        .filter(([, i]) => ["twse", "tpex"].includes(i.type))
+        .map(([symbol, i]) => ({
+          market: i.type === "twse" ? "TWSE" : "TPEX",
+          symbol,
+          name: i.stock_name || symbol,
+          industry: i.industry_category || "",
+          updated_at: now(),
+        }))
+        .sort((a, b) => a.symbol.localeCompare(b.symbol));
       catalogAt = Date.now();
     } catch {
       catalogError = Date.now();
@@ -202,9 +183,7 @@ export async function refreshCatalog() {
 }
 export async function search(q) {
   await refreshCatalog();
-  const all = await rows(
-    "SELECT market,symbol,name,industry FROM instruments ORDER BY symbol",
-  );
+  const all = catalog;
   return all
     .filter(
       (i) =>
@@ -221,4 +200,9 @@ export async function search(q) {
       ...i,
       market_label: i.market === "TWSE" ? "上市" : "上櫃",
     }));
+}
+export async function getCatalog() {
+  await refreshCatalog();
+  if (!catalog.length) fail("股票目錄來源暫時無法取得，未使用DB目錄備援", 503);
+  return catalog;
 }

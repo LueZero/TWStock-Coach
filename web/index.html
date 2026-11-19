@@ -635,7 +635,9 @@
                 <label
                   >資料視角<select id="financialMode">
                     <option value="latest">最新取得資料</option>
-                    <option value="historical">所選 K 線當時可得</option>
+                    <option value="historical" disabled>
+                      歷史當時可得（純API模式不提供）
+                    </option>
                   </select></label
                 >
               </div>
@@ -745,8 +747,10 @@
               <div class="chart-tools">
                 <label
                   >資料視角<select id="basicViewMode">
-                    <option value="latest">最新取得修訂</option>
-                    <option value="historical">所選K線當時可得</option>
+                    <option value="latest">最新來源資料</option>
+                    <option value="historical" disabled>
+                      歷史當時可得（純API模式不提供）
+                    </option>
                   </select></label
                 >
               </div>
@@ -793,8 +797,10 @@
               <div class="chart-tools">
                 <label
                   >資料視角<select id="chipViewMode">
-                    <option value="latest">最新取得修訂</option>
-                    <option value="historical">所選K線當時可得</option>
+                    <option value="latest">最新來源資料</option>
+                    <option value="historical" disabled>
+                      歷史當時可得（純API模式不提供）
+                    </option>
                   </select></label
                 >
               </div>
@@ -1190,8 +1196,10 @@
                 <label>比較資料截至<input id="peerDate" type="date" /></label
                 ><label
                   >資料可得視角<select id="peerViewMode">
-                    <option value="latest">目前取得修訂（事後研究）</option>
-                    <option value="historical">當時平台已接收資料</option>
+                    <option value="latest">目前來源資料（事後研究）</option>
+                    <option value="historical" disabled>
+                      歷史當時可得（純API模式不提供）
+                    </option>
                   </select></label
                 ><label
                   >比較期間<select id="peerAlignment">
@@ -1301,7 +1309,9 @@
                     <label
                       >研究視角<select id="chatNewMode">
                         <option value="latest">最新資料，每次提問更新</option>
-                        <option value="historical">固定歷史截止</option>
+                        <option value="historical" disabled>
+                          歷史時點快照（純API模式不提供）
+                        </option>
                       </select></label
                     >
                     <label id="chatCutoffLabel" hidden
@@ -1518,8 +1528,8 @@
           </div>
         </div>
         <footer>
-          股票智能助手 · 行情新鮮度與來源狀態可展開查看 · 技術規則供研究，未完成
-          K 線不產生正式訊號
+          股票智能助手 · 來源 API＋記憶體快取，不讀寫股票資料 DB ·
+          技術規則供研究，未完成 K 線不產生正式訊號
         </footer>
       </main>
     </div>

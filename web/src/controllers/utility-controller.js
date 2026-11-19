@@ -424,8 +424,14 @@ async function refreshPeers() {
     }));
     renderPeerSelection();
     renderPeers();
-    if (data.view_mode === "latest" && !$("loadPeers").disabled) {
-      const missing = data.rows
+    if (
+      data.view_mode === "latest" &&
+      $("dashboardGrid").dataset.view === "peers" &&
+      !document.hidden &&
+      !$("loadPeers").disabled
+    ) {
+      const missing = filteredPeers()
+        .slice(peerPage * 10, peerPage * 10 + 10)
         .filter(
           (r) =>
             r.load_required &&
@@ -462,16 +468,38 @@ function renderPeerSelection() {
   });
 }
 
-function renderPeers() {
-  const data = peerData;
-  if (!data) return;
-  const filter = $("peerFilter").value.trim().toLowerCase(),
-    business = $("peerScope").value === "business";
-  const filtered = data.rows.filter(
+function filteredPeers() {
+  const filter = $("peerFilter").value.trim().toLowerCase();
+  const business = $("peerScope").value === "business";
+  return (peerData?.rows || []).filter(
     (r) =>
       (!business || r.business_peer || r.selected) &&
       (!filter || (r.name + r.symbol).toLowerCase().includes(filter)),
   );
+}
+
+function loadVisiblePeers() {
+  peerLoadVersion++;
+  $("loadPeers").disabled = false;
+  if (
+    $("dashboardGrid").dataset.view !== "peers" ||
+    $("peerViewMode").value === "historical" ||
+    document.hidden
+  )
+    return;
+  const missing = filteredPeers()
+    .slice(peerPage * 10, peerPage * 10 + 10)
+    .filter(
+      (r) =>
+        r.load_required && !peerAutoAttempted.has(r.market + ":" + r.symbol),
+    );
+  if (missing.length) loadPeerData(missing);
+}
+
+function renderPeers() {
+  const data = peerData;
+  if (!data) return;
+  const filtered = filteredPeers();
   const pages = Math.max(1, Math.ceil(filtered.length / 10));
   peerPage = Math.min(peerPage, pages - 1);
   const visible = filtered.slice(peerPage * 10, peerPage * 10 + 10);
@@ -672,6 +700,7 @@ function renderPeers() {
 }
 
 let peerSearchTimer;
+let visiblePeerTimer;
 
 async function loadPeerData(items = peerList) {
   if ($("peerViewMode").value === "historical") {
@@ -684,7 +713,11 @@ async function loadPeerData(items = peerList) {
     list = items.slice();
   if (!list.length) return;
   $("loadPeers").disabled = true;
-  const current = () => version === peerLoadVersion && key === stockKey();
+  const current = () =>
+    version === peerLoadVersion &&
+    key === stockKey() &&
+    $("dashboardGrid").dataset.view === "peers" &&
+    !document.hidden;
   let failures = 0;
   try {
     for (let i = 0; i < list.length; i++) {
@@ -697,27 +730,25 @@ async function loadPeerData(items = peerList) {
       )
         continue;
       $("peerLoadStatus").textContent =
-        `補齊 ${i + 1}/${list.length}：${stock.name} ${stock.symbol}；完整產業名單較多，依來源配額循序處理，已取得的資料先顯示。`;
-      peerAutoAttempted.add(stock.market + ":" + stock.symbol);
-      const queued = await utilityPost("/api/fundamentals/load", {
-        market: stock.market,
-        symbol: stock.symbol,
-      });
-      let job = await analysisJson("/api/jobs/" + queued.job_id),
+        `本批 ${i + 1}/${list.length}：${stock.name} ${stock.symbol}；依來源配額循序處理，已取得資料先顯示。其他頁面切換後載入，也可手動補齊完整名單。`;
+      const url = `/api/stock-data/${stock.market}/${stock.symbol}?section=financial&background=true`;
+      let response = await analysisJson(url),
         attempt = 0;
-      while (["queued", "running"].includes(job.status) && attempt++ < 300) {
+      while (response.state === "updating" && attempt++ < 300) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         if (!current()) return;
-        job = await analysisJson("/api/jobs/" + queued.job_id);
+        response = await analysisJson(url);
       }
-      if (["queued", "running"].includes(job.status))
+      if (response.state === "updating")
         throw Error("來源仍在處理；可稍後更新比較查看結果。");
+      peerAutoAttempted.add(stock.market + ":" + stock.symbol);
+      const job = response.update;
       if (job.status !== "success")
         $("peerLoadStatus").textContent =
           `${stock.name}有來源未成功，保留缺漏並繼續補齊其他公司。`;
       if (current()) await refreshPeers();
-      failures = Object.values(job.details?.datasets || {}).some(
-        (s) => s.status === "failed",
+      failures = Object.values(job.details?.datasets || {}).some((s) =>
+        ["failed", "source_error"].includes(s.status),
       )
         ? failures + 1
         : 0;
@@ -730,11 +761,12 @@ async function loadPeerData(items = peerList) {
     }
     if (current())
       $("peerLoadStatus").textContent =
-        "名單擷取工作已完成；失敗、過期或沒有共同期的項目仍標示缺漏，請查看來源。";
+        `本批 ${list.length} 檔已查詢，完整名單共 ${peerList.length} 檔；未取得或沒有共同期的項目仍標示缺漏。可切頁載入或手動補齊完整名單。`;
   } catch (error) {
     if (current()) $("peerLoadStatus").textContent = error.message;
   } finally {
-    if (current()) $("loadPeers").disabled = false;
+    if (version === peerLoadVersion && key === stockKey())
+      $("loadPeers").disabled = false;
   }
 }
 
@@ -903,14 +935,18 @@ export function initUtilityController() {
   $("peerFilter").oninput = $("peerScope").onchange = () => {
     peerPage = 0;
     renderPeers();
+    clearTimeout(visiblePeerTimer);
+    visiblePeerTimer = setTimeout(loadVisiblePeers, 250);
   };
   $("peerPrevious").onclick = () => {
     peerPage = Math.max(0, peerPage - 1);
     renderPeers();
+    loadVisiblePeers();
   };
   $("peerNext").onclick = () => {
     peerPage++;
     renderPeers();
+    loadVisiblePeers();
   };
   utilitiesChanged();
 }

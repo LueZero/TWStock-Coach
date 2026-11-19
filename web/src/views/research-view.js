@@ -177,8 +177,17 @@ function renderCoverage(container, coverage) {
   container.replaceChildren();
   const labels = {
     available: "已取得",
+    queued: "等候來源查詢",
+    not_requested: "此頁未查詢",
+    outside_range: "來源資料不在所選區間",
+    loading: "來源查詢中",
+    source_error: "來源請求失敗，可稍後重試",
+    permission_denied: "目前帳戶權限不足",
+    invalid_token: "Token 無效或已失效",
+    quota_exceeded: "來源額度或速率已達上限",
+    source_blocked: "來源暫時封鎖連線",
     requires_token: "需要來源權限",
-    not_connected: "尚未接入授權來源",
+    not_connected: "尚未接入來源",
     no_data: "所選期間未取得",
     not_configured: "尚未設定來源",
   };
@@ -188,7 +197,7 @@ function renderCoverage(container, coverage) {
     const name = document.createElement("strong");
     name.textContent = s.label;
     const detail = document.createElement("span");
-    detail.textContent = `${labels[s.status] || s.status} · ${s.source || "來源尚未接入"}${s.entitlement ? " · " + s.entitlement : ""}${s.received_at ? " · 接收 " + localTime(s.received_at) + " · 修訂 " + s.revision : ""}`;
+    detail.textContent = `${labels[s.status] || s.status}${s.message ? " · " + s.message : ""} · ${s.source || "尚無成功來源回應"}${s.entitlement ? " · " + s.entitlement : ""}${s.received_at ? " · 接收 " + localTime(s.received_at) : ""}`;
     item.append(name, detail);
     container.append(item);
   });

@@ -200,9 +200,15 @@ function dailyUrl() {
   return `/api/chart/${market}/${symbol}?${params}`;
 }
 
-async function fetchHistory(gen) {
+async function fetchHistory(gen, managed = false) {
   const request = ++historyRequest;
-  const result = await json(dailyUrl());
+  const url = dailyUrl();
+  const response = await json(
+    managed
+      ? url.replace("/api/chart/", "/api/stock-data/") + "&section=chart"
+      : url,
+  );
+  const result = managed ? response.data : response;
   if (gen !== state.generation || request !== historyRequest) return;
   state.rows = result.data;
   updateRangeStatus();
@@ -215,6 +221,7 @@ async function fetchHistory(gen) {
   renderHistory();
   if (state.mode === "history") renderHistoricalSummary();
   plot();
+  return managed ? response : null;
 }
 
 function restartHistory() {
@@ -257,58 +264,18 @@ async function loadHistory(gen = state.generation) {
   state.loading = true;
   $("historyStatus").textContent = "查詢歷史資料…";
   try {
-    await fetchHistory(gen);
+    const response = await fetchHistory(gen, true);
     if (gen !== state.generation) return;
-    let historicalEnd = end;
-    if (end >= taipeiDay()) {
-      const market = await json("/api/market/status");
-      if (gen !== state.generation) return;
-      state.market = market;
-      renderMonitorStatus();
-      historicalEnd = isMinute()
-        ? shiftDay(taipeiDay(), -1)
-        : market.daily_source_end || shiftDay(taipeiDay(), -1);
-    }
-    if (start > historicalEnd) {
-      state.loading = false;
-      $("historyStatus").textContent = isMinute()
-        ? "今日分鐘 K 需盤中分鐘行情來源；目前僅讀取已接入資料。"
-        : "今日完成日 K 尚未由盤後來源提供；可查看最近完成交易日，或勾選即時監控查看最新行情。";
-      return;
-    }
-    const job = await json("/api/history/load", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        market: state.stock.market,
-        symbol: state.stock.symbol,
-        start,
-        end: historicalEnd,
-        price_basis: $("priceBasis").value,
-        timeframe: isMinute() ? "1m" : "1d",
-        warmup_days: Math.min(
-          8000,
-          Math.max(
-            420,
-            Math.max(...maPeriods) *
-              ({ "1d": 2, "1w": 8, "1mo": 32 }[state.resolution] || 2),
-          ),
-        ),
-      }),
-    });
-    if (gen !== state.generation) return;
-    if (
-      ["success", "quality_warning", "no_data", "failed"].includes(job.status)
-    ) {
-      await fetchHistory(gen);
-      if (gen !== state.generation) return;
-      $("historyStatus").textContent = historyResult(job);
+    const job = response.update;
+    if (response.state !== "updating") {
+      $("historyStatus").textContent =
+        (job.message || historyResult(job)) + " · 來源 API／記憶體快取，無 DB";
       state.loading = false;
       return;
     }
     $("historyStatus").textContent =
-      `正在從來源載入 ${start} 至 ${historicalEnd}，目前畫面 ${state.rows.length} 根 K 線…`;
-    pollJob(job.job_id, gen, 0);
+      `資料更新中，目前顯示 ${state.rows.length} 根 K 線…`;
+    pollJob(null, gen, 0);
   } catch (error) {
     if (error.name === "AbortError" || gen !== state.generation) return;
     state.loading = false;
@@ -321,15 +288,14 @@ function pollJob(id, gen, attempt) {
   setTimeout(async () => {
     if (gen !== state.generation) return;
     try {
-      const job = await json("/api/jobs/" + id);
+      const response = await fetchHistory(gen, true);
       if (gen !== state.generation) return;
-      if (
-        ["success", "quality_warning", "no_data", "failed"].includes(job.status)
-      ) {
+      const job = response.update;
+      if (response.state !== "updating") {
         state.loading = false;
-        await fetchHistory(gen);
-        if (gen !== state.generation) return;
-        $("historyStatus").textContent = historyResult(job);
+        $("historyStatus").textContent =
+          (job.message || historyResult(job)) +
+          " · 來源 API／記憶體快取，無 DB";
         return;
       }
       $("historyStatus").textContent =

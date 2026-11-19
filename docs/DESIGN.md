@@ -1,265 +1,98 @@
 # 架構設計
 
-更新：2026-10-18，版本1.2.0。平台後端使用 Node.js ES modules；AI 分析另呼叫 Codex CLI，不依賴 Python 後端。前端使用 Vite、Bootstrap 與 ES modules MVC；開發服務及正式靜態網站均獨立於API。Fastify不提供看盤前端。
+更新：2026-11-20。套件版本 1.2.0。功能細節見 [功能設計](FEATURES.md)。
+
+## 現行架構
+
+前端 Vite／Bootstrap／JavaScript MVC，股票服務為 Node.js／Fastify。**股票資料完全使用來源 API 與程序內記憶體快取，沒有 SQL 讀寫、資料庫驅動、初始化 SQL、資料遷移或持久排程。** Compose 僅管理 `api`；前端與選用的本機 Codex Agent 分別啟動。
 
 ```mermaid
 flowchart LR
-  Web[Vite 前端／正式靜態網站] --> Proxy[同源反向代理]
-  Proxy --> API[股票 API：8000]
-  Proxy --> Agent[獨立 AI Agent：8010]
-  API --> DB[(PostgreSQL)]
-  API --> Queue[行情／財務擷取工作]
-  Queue --> DB
-  Scheduler[股票 scheduler] --> DB
-  Scheduler --> Source[FinMind／TWSE／TPEx／TDCC]
-  Source --> Scheduler
-  API --> MIS[公開即時行情快照]
-  Agent --> CLI[Codex CLI 原生 agent loop／指定Session接續]
-  CLI --> MCP[stock MCP：按需查詢]
-  MCP --> API
-  CLI --> Agent
-  Agent --> Files[sessions：對話／工具紀錄／研究快照]
+  Web[Vite MVC 前端] --> API[Fastify API :8000]
+  API --> RAM[記憶體快取／合併請求]
+  RAM --> Sources[TWSE／TPEx／TDCC／TAIFEX／FinMind／RSS]
+  API --> Calc[指標／財務比率／策略回放]
+  Agent[本機 Codex Agent :8010] --> API
+  Agent --> Files[Session 與研究檔案]
 ```
 
-## 文件範圍
-
-本文件維護系統邊界、資料契約、啟動部署、備份及驗證。畫面操作、指標細項與資料不足的呈現方式集中於[功能設計](FEATURES.md)。不保留舊版架構或歷次測試數字作為現行規格。
-
-| 服務      | 啟動方式                                    | 狀態保存                                 |
-| --------- | ------------------------------------------- | ---------------------------------------- |
-| web       | 本機 Vite；正式部署 web/dist                | 瀏覽器畫面設定                           |
-| api       | Compose api／node api/index.js              | PostgreSQL                               |
-| scheduler | Compose scheduler／node api/cli.js schedule | PostgreSQL 股票工作佇列                  |
-| agent     | 本機 npm run assistant:start                | sessions 檔案及本機 Codex 認證／會話目錄 |
-
-Agent是常駐Node.js橋接服務，不連資料庫。前端建立獨立Session並提交訊息，不先建立完整報告資料包。Codex依問題按需查工具；每個標的首次市場查詢固定自己的截止，同Session用指定thread ID接續，同Session可換股及比較，跨Session不共享原生對話。服務最多同時執行一個CLI，不建立額外模型循環或持久佇列。新資料保存sessions，舊reports只讀封存。
-
-## 程式責任
-
-股票排程與 AI Agent 各有獨立責任。下表對應目前程式位置；AI 報告操作與檢核見[功能設計](FEATURES.md#股票助手)。
-
-agent/AGENTS.md維護精簡對話規則，chat-adapter.js負責Session提示與CLI，codex-process.js共用原生執行、限制及事件處理；chat-tools.js與chat-mcp-server.js提供按需資料及研究內容工具。資料計算沿用股票API的report-observations／conditions，不把固定策略結果當整體買賣建議。
-
-| 位置                                                              | 責任                                                     |
-| ----------------------------------------------------------------- | -------------------------------------------------------- |
-| api/index.js、api.js、contracts.js                                | 啟動、路由、驗證、API文件及文件專用資源                  |
-| api/config.js、db.js、migrations                                  | 環境、連線池、交易與可重跑 SQL 遷移                      |
-| api/service.js                                                    | 行情驗證、唯一資料、修訂、完成資料分析與查詢             |
-| api/providers.js、market.js、trading.js                           | 來源限流重試、公司／集保／ETF、股票目錄、五檔、交易日曆  |
-| api/jobs.js、cli.js                                               | 持久工作排隊、心跳、恢復、排程及一次性命令               |
-| api/indicators.js、charting.js                                    | 技術指標、先暖機後截取區間、多週期聚合與正式訊號         |
-| api/fundamentals.js、financial-metrics.js、financial-catalog.json | 財務期間、科目映射、缺值、歷史趨勢與38細項               |
-| api/equity.js、peers.js                                           | 籌碼分布／流量、來源覆蓋、授權揭露、產業候選與同期間比較 |
-| api/calculator.js                                                 | decimal.js 費用、稅、損益兩平與跨級距跳檔                |
-| api/market-board.js、market-chips.js                              | 大盤行情、期貨日夜盤、上市法人與融資融券、來源日期與快照 |
-| api/media.js                                                      | 公司新聞索引、RSS／Atom、公開討論、關聯與去重            |
-| api/strategy.js、research.js                                      | 可追溯研究規則、次根成交回放、滾動 ridge 預測            |
-| api/research-packet.js、report-conditions.js                      | 固定研究資料包、歷史截止與完成日線條件，不啟動 Codex     |
-| agent/index.js、server.js、chat-routes.js、session-store.js       | HTTP解鎖、Session、事件與檔案保存                        |
-| agent/chat-adapter.js、codex-process.js、chat-tools.js            | 原生CLI接續、資料工具、報告與K線研究內容                 |
-| web/src/models、views、controllers                                | 前端狀態、DOM／SVG呈現、互動與請求取消                   |
-| web/src/views/orderbook-view.js                                   | 個股與期貨共用五檔、深度色帶、缺值與委託合計             |
-
-Agent以GET /api/assistant/sessions/:id/events提供SSE活動、文字段落及研究卡片。CLI若提供agent_message的started／updated／completed文字，皆立即轉發；同message_id採更新而非重複附加。這不是保證逐Token的介面，仍取決於CLI何時輸出文字。事件使用Session內遞增ID，重連可續接，10秒心跳，另有輪詢恢復；不轉送推理。查詢進度直接放在當則回覆內。每輪完成／取消／失敗後保存，活躍Session由記憶體回應。
-
-全市場選股由api/market-screen.js提供GET /api/market/screen；Agent的screen_market_stocks透過HTTP使用此端點，不直接抓官方來源。來源為TWSE STOCK_DAY_ALL與TPEx tpex_mainboard_daily_close_quotes，伺服器快取5分鐘；過期後來源失敗不回傳舊快取。股票與ETF分流，排除權證及ETN，股數／元／百分比各有明確欄位；不混合不同交易日期排名。回傳來源、接收時間、各日期涵蓋市場、母體數、符合數與分頁；來源失敗或日期不一則complete=false。這是最新官方日資料，不支援盤中全市場推播或歷史截止選股。
-
-## AI 工具邊界
-
-每輪建立暫存工作目錄與唯一stock stdio MCP，載入AGENTS.md及技能目錄，SKILL.md內容由stock MCP按需讀取，不啟用shell、網頁搜尋或其他MCP。工具不接受任意URL／SQL或更改歷史截止；個股market／symbol由Codex依使用者描述明傳，再經平台目錄核對，API位址由服務設定。Codex自主選工具與一年內起日，資料回傳含分頁、來源和缺漏。每個標的首次市場查詢才更新最新行情並鎖定自己的scope；跨股各自保存來源與截止。一般概念對話可零工具呼叫，沒有強制九面向預載。
-
-show_stock_chart接受明確標的、期間與焦點日期，以平台計算完成日K及技術事件形成卡片；save_research_report只接受當輪成功證據ID，常見價格與損益檢核失敗回傳工具錯誤供原生流程修正。報告與圖表有獨立UUID及scope，保存後不由後續對話覆寫。一般Chat不施加舊制七面向JSON或全文價位正則攔截，工具引用與自然語言推論仍須分開看待。
-
-Session JSON保存訊息與每輪工具稽核；原生thread由Codex本機認證／會話目錄保存。thread ID與平台Session ID分開，永不使用resume --last。CLI程序只在發送訊息時啟動，使用訂閱登入，沒有API Key，也不使用AI資料表或Agent容器。
-
-### 研究技能與多標的隔離
-
-agent/research-skills.js管理agent/skills的固定技能白名單，名稱與描述提供選擇，內容雜湊標記版本。read_research_skill只允許已註冊名稱，不接受路徑；實際SKILL.md經MCP回傳，不為讀技能開放shell。查實際資料的工具要求本輪先載入twstock-evidence，其他技能由Codex依問題選擇。技能載入與資料來源分開記錄，不能拿技能當行情證據。
-
-assistant-tools.js提供搜尋與顯式market／symbol路由；每檔分別建立chat-tools.js與tools.js的資料快照及計算價格集合。Session只保留已研究標的作脈絡，不把它們當預設或限制。來源、圖表與報告帶標的資訊；跨股比較保留每檔截止與商品升降單位。多股user_cost試算需要可核對的position_text使用者原文，避免把成本或數量套到別檔。
-
-get_market_data不需要個股，提供最新大盤、期貨日夜盤及市場籌碼。獨立入口尚未提供嚴格歷史截止，歷史模式會拒絕最新快照，不以任意股票或最新資料替代。新輪次記錄agent_version，既有Session與報告快照不重寫。
-
-## 儲存契約
-
-加權指數與台指期由api/market-board.js提供獨立行情及歷史區間，來源快照存於market_board_snapshots，不與股票股數混用；盤別、契約及暖機設計見 [市場看板](FEATURES.md#大盤市場)。
-
-股票代號為字串，保留0050等前導零。量一律存股，37股不截斷；來源張／股單位另外保存。原始與還原價分序列，零股及整股交易類型分開。
-
-bars 的唯一鍵為市場、商品、交易類型、週期、價格基準、具時區時間戳，不含來源；同鍵不同來源回報衝突，不自動切換。日線另外保存交易日期，時間戳採台北13:30；分鐘要求整分鐘。顯示使用 Asia/Taipei。
-
-重跑同內容不增加修訂；更動前保存完整舊 snapshot。舊來源時間及已完成降回未完成皆忽略。行情更新及指標重算在同一交易提交，analysis 只對應目前 bar_revision；未完成資料無正式指標。PostgreSQL 交易鎖序列化寫入。
-
-財務／籌碼快照不可變，保留 dataset、source、received_at、digest、revision、data。重跑依正規化內容及來源去重，也可沿用遷移前 digest。歷史可得性依平台接收時間，財報期間不冒充公告時間；現在取得的舊財報不回填為當年已知。公開報價快照另存 quote_snapshots，不能拼成假的 OHLC。
-
-## 排程與來源
-
-API 將按需回補存入 job_runs，202回應提供工作ID。缺分鐘Token會立即記錄失敗原因，不排隊等待其他來源；相同請求沿用工作，日K仍可使用。等待與執行中的工作不受完成工作快取期限限制，等待時間不能當成失敗心跳。互動工作上限為行情6、籌碼3、財務4；priority=0 的自選排程不占互動名額。Node.js scheduler 每秒檢查，依互動行情、互動分析、定時更新的優先順序claim；使用行鎖，執行程序另持有 schema 專屬 advisory lock，確保同一 schema 只有一個來源消費者。心跳每30秒，中斷恢復最多3次嘗試；只有取得排程鎖的工作程序可恢復 running 工作。來源失敗不等於自動恢復重試，FinMind 請求本身另有4次重試。CLI 可以處理工作；有其他消費者時等待既有工作結果。
-
-每六小時排程 WATCHLIST 日線與財務更新。日線首次從 BACKFILL_START 開始，後續重疊最近10個日曆日抓修正，不重新抓全部。使用者歷史區間另有至少420日暖機；週／月長均線可增加至8000日，分鐘14日。日期輸入、顯示區間、來源實際有資料的期間分開。
-
-所有 FinMind 請求共用程序內限流、45秒來源逾時與最多4次重試；429／5xx退避。工作失敗保留原因，不使用推估值填空。公司及集保快取24小時、MIS10秒、交易日曆1小時。公開行情不可保證即時或完整五檔。
-
-## 計算與限制
-
-MA、Wilder RSI／ATR、MACD、KD、布林通道及量比在所選完成觀測上計算。先取暖機、聚合，再截取顯示範圍。週／月 K 必須區間結束且所有已取得成分完成才標正式；完成不保證無缺漏。窗口以有效觀測計數，不補停牌／無成交為零。一般分鐘以09:00、盤中零股以09:10開始聚合；盤後零股14:30的單次撮合另成一根，不套用一般交易時段。自動分鐘擷取仍只接一般整股，零股分鐘需授權匯入，前台尚無零股行情切換。
-
-費用使用 decimal.js，元以下處理可追溯；API金額是字串。財務要求同期間與連續季，缺必要科目保留null；不以相近科目硬替代。預測僅使用完成還原日線，標準化與訓練標籤只使用當時已完成資料，回傳基準誤差與殘差範圍，不提供交易指令。
-
-目前適合個人自選股規模。大量分鐘線仍需分區、增量重算及正式串流來源；公開快照不替代授權盤中行情。股票資料與數值計算不依賴語言模型；只有 AI 報告及追問使用 Codex 訂閱額度。
-
-## 前端工作流程
-
-主菜單為 股票助手、個股看盤、大盤市場、股票計算機，桌機側欄與手機頂部同步切換中央內容。大盤與計算機不顯示個股行情列、研究導覽及個股日期控制。計算機仍可使用頂部搜尋或自選股選取商品。歷史行情位於技術指標下方，預設收合。策略回放有個股分頁；預測目前只有 API，沒有前台頁面或獨立預測排程。
-
-`web/index.html` 是 Vite 入口，`web/src/main.js` 匯入樣式與模組，待模組完成載入後依序執行 DOM 綁定。Model、View、Controller 以明確 import/export 連接；共用可變狀態由物件管理，避免修改唯讀的匯入綁定。
-
-根目錄 `npm run dev` 或在 web 執行同名指令，啟動127.0.0.1:5173；/api/assistant 優先代理至 ASSISTANT_PROXY_TARGET（預設http://127.0.0.1:8010），其餘 /api、/health、/docs、/openapi.json代理至API_PROXY_TARGET（預設http://127.0.0.1:8000）。這個設定只供開發工具使用，不將.env金鑰放入前端。Vite preview位於4173，僅供本機預覽。
-
-`npm run build` 產出web/dist；圖片由web/public/images複製至dist/images，程式與樣式建置為assets下的內容雜湊檔。正式前端由獨立靜態網站服務提供，透過反向代理連接API；Nginx範例在web/deploy/nginx.conf。目前 Compose 管理 postgres、api、scheduler，AI Agent 與 Vite 在本機另行啟動。
-
-API根路徑回傳服務名稱、版本及文件／健康路徑的JSON。工作台、前端原始碼及圖片路徑在API回應404；Swagger的/docs及其專用資源仍可使用。版本取自根package.json，與OpenAPI同步。MIT授權適用專案程式碼，第三方行情及財務資料仍依來源使用條款。
-
-## 部署與維護
-
-### Docker Compose
-
-目前AI Chat使用本機獨立 `agent` 服務，不需 Agent 容器。先執行 `npm run assistant:setup` 產生平台存取密碼，以 ChatGPT 訂閱登入本機 Codex，再執行 `npm run assistant:start`。服務在8010，對話保存至`./sessions`，CLI 認證及 session 使用本機 `CODEX_HOME`。登入及啟動流程見下方「AI Agent 啟動」。
-
-前端代理須優先把`/api/assistant`送到`http://127.0.0.1:8010`，其他`/api`送到股票API的8000。Nginx可使用`location /api/assistant/ { proxy_pass http://127.0.0.1:8010; proxy_buffering off; proxy_read_timeout 420s; }`並保留既有股票代理。備份須包含sessions及舊reports 及本機受保護的 CLI 認證／會話目錄；股票資料庫備份不包含新報告。助手密碼、認證、報告及持倉檔案不能公開。
-
-`npm run setup` 建立本機 .env；Compose 自動提供資料庫連線，不需將密碼印出。Docker使用package-lock.json與固定Node.js映像digest，只安裝後端正式依賴，不建置或提供前端。Compose預設postgres、api、scheduler三個股票服務：
-
-```powershell
-docker compose up -d --build --remove-orphans
-docker compose ps
-npm run verify
-docker compose exec -T api npm run verify:db
-docker compose exec -T api npm run verify:worker
-```
-
-postgres-data卷保留原名。API啟動先執行SQL遷移，使用advisory lock及交易，重啟不重建資料；scheduler等API健康後開始。僅API綁127.0.0.1:8000，資料庫不公開埠。正式對外由主機反向代理提供HTTPS及登入／存取控制。
-
-停止使用的初始化及工具服務已移除，手動操作改為 `docker compose run --rm api node api/cli.js ...`。更新不要執行down -v。Node映像以非root使用者執行，.env不打包。
-
-### 不使用Docker的主機
-
-主機需Node.js 22.16以上（建議24）、PostgreSQL及對外HTTPS。僅提供靜態或PHP空間、無背景程序、無PostgreSQL的虛擬主機無法直接承載此架構。可改用提供Node程序與外部PostgreSQL的方案或支援Compose的VPS。
-
-1. 後端上傳api、package.json、package-lock.json及必要scripts；前端另行部署，不需上傳web至API主機。不要上傳本機node_modules或.env金鑰到公開目錄。
-2. 在API部署環境執行 `npm ci --omit=dev --workspaces=false`，只安裝後端正式依賴。
-3. 由主機密鑰設定DATABASE_URL，例如postgresql://帳號:URL編碼密碼@資料庫主機:5432/stock；使用主機規定的TLS設定。另設INGEST_API_KEY、來源設定、PORT與HOST。
-4. 啟動 `node api/index.js`，另以程序管理器啟動 `node api/cli.js schedule`。程序需可自動重啟及接收SIGTERM。
-5. 若主機只准一個Node程序，可設定RUN_WORKER=true；API會同時消費佇列與定時更新。多個API仍由資料庫鎖限制一個消費者，但標準Compose採分離方式。
-6. 主機需保留工作及PostgreSQL資料，不能只依賴程序記憶體。
-
-`process.loadEnvFile`會讀取本機.env；作業平台直接注入的環境變數優先。PORT預設8000、HOST預設0.0.0.0。不用Docker時務必設定DATABASE_URL，預設本機連線只用於開發。
-
-### 資料備份
-
-由備份程序使用PostgreSQL的pg_dump自訂格式輸出，保留所有資料表、序列及修訂。Windows範例讓容器直接寫二進位檔，避免PowerShell文字管線破壞備份：
-
-```powershell
-docker compose exec -T postgres pg_dump -U stock -d stock -Fc -f /tmp/stock.backup
-docker compose cp postgres:/tmp/stock.backup ./stock.backup
-```
-
-備份檔包含完整分析資料，保存於專用非公開目錄；不要提交版本控制。還原先在隔離資料庫演練，確認行情筆數、快照修訂、時間戳、API與圖表；正式替換資料庫須停寫並另安排維護。平台此處未自動執行正式還原或刪除資料卷。
-
-### 日誌與工作
-
-```powershell
-docker compose logs --tail 100 api scheduler
-docker compose exec -T api node -e "fetch('http://localhost:8000/api/jobs').then(r=>r.json()).then(console.log)"
-```
-
-工作心跳每30秒，正常重啟後可恢復中斷Node工作，執行3次後中斷則失敗。已完成工作不因重啟重跑；定時更新可建立新修訂。訊號SIGTERM會停止接新工作、結束正在處理的來源請求並關閉連線池，Compose預留60秒。來源需權限或網路失敗會記錄到工作，不輸出授權Token。
-
-`/health` 只驗證API與資料庫連線，不代表資料來源或scheduler健康。`docker compose ps` 的scheduler「Up」只代表程序存活；另檢查 `/api/jobs` 的status、heartbeat_at、attempts、priority及日誌。queued 沒有執行心跳是正常的，不能因等待很久而判定失敗。正在執行工作的心跳長時間停止時，先檢查程序／資料庫，不手動把仍由消費者持有的工作改成失敗。
-
-`verify:worker` 唯讀核對目前schema有1個排程鎖持有者、running心跳不超過120秒，列出待處理數量與等待時間；沒有running工作時只核對鎖。這是維護檢查，不是獨立的worker健康端點，也不代表外部來源必定可用。
-
-`verify:db` 使用PostgreSQL交易內的暫存表驗證完整年度指標暖機、截止前K線修訂、行情首次接收及同時間戳內容修訂。結束即ROLLBACK並關閉連線，不修改正式股票資料，也不建立永久測試schema。容器測試使用Compose資料庫連線；本機執行須提供有效DATABASE_URL，Compose的PostgreSQL預設未公開本機埠。
-
-依賴更新流程：修改套件、更新package-lock、npm audit、npm test、隔離資料庫測試、瀏覽器驗證，再重建映像。映像digest需要定期更新，不能把固定版本視為永久維護完成。
-
-### 前端開發與預覽
-
-Compose後端運行時，於根目錄執行 `npm run dev`，開啟http://127.0.0.1:5173；亦可在web目錄執行相同指令。Vite代理API至8000，開發時不必重建容器才看見前端變更。若API不在預設位址，透過環境變數API_PROXY_TARGET指定完整HTTP(S)網址。
-
-`npm run build` 建置至web/dist，`npm run preview` 在4173預覽；preview不是正式服務程序。API的8000根路徑只提供JSON服務資訊，看盤頁在5173或4173。前端更新不需重建API容器。
-
-API_PROXY_TARGET由啟動Vite的程序環境讀取，修改後需重啟；根目錄.env不會自動提供這項Vite設定。PowerShell範例：
-
-```powershell
-$env:API_PROXY_TARGET = "http://127.0.0.1:8000"
+前端所有看盤數字皆經平台 API 取得。技術指標、財務比率與策略回放由 Node.js 使用來源資料計算，並非所有衍生數字都由外部供應商直接提供。記憶體快取會在 API 重啟後清除；不從資料庫或歷史檔案恢復股票資料。
+
+## 八個個股區塊的資料路徑
+
+| 區塊 | 平台資料接口 | 來源與處理 |
+| --- | --- | --- |
+| 看盤工作台 | `/api/quote`、`/api/stock-data?section=chart` | 公開行情／五檔、來源 K 線、聚合與均線 |
+| 技術指標 | 共用 K 線接口、`/api/strategy/analyze` | 完成 K 線、技術指標與事件；歷史行情展開顯示 |
+| 基本分析 | `/api/stock-data?section=basic` | 官方公司基本資料；未接入的機構研究明示限制 |
+| 財務分析 | `/api/stock-data?section=financial` | FinMind 六個資料集、平台比率／歷史比較與計算結果快取 |
+| 籌碼分析 | `/api/stock-data?section=equity` | 法人、融資券、股權、官方申報及有權限的分點資料 |
+| 策略回放 | `/api/strategy/backtest` | 來源歷史 K 線及平台策略計算，不保存回測到 DB |
+| 同業比較 | `/api/peers`、財務資料接口 | API 股票目錄與已取得財務資料，按需補齊可見頁面 |
+| 熱門新聞 | `/api/media` | 近期 RSS 與逐日公司新聞索引分開載入 |
+
+API 返回 `ready`、`updating`、`partial`、`unavailable`。前端切換區塊先顯示畫面與現有資料，來源工作按需啟動；離開區塊停止前端輪詢與下一批補齊。已發送的共享來源請求可能繼續完成，供其他使用者或稍後返回使用。
+
+## 後端模組
+
+| 模組 | 責任 |
+| --- | --- |
+| `api/api.js`、`contracts.js` | HTTP 接口、參數驗證、OpenAPI 與錯誤處理 |
+| `api/bar-validation.js` | 純 K 線格式、時間、價格與股數驗證 |
+| `api/direct-data.js` | 股票來源資源、財務／籌碼讀取器及同業組裝 |
+| `api/daily-provider.js`、`providers.js` | 區間行情、官方月報備援與 FinMind 連線 |
+| `api/source-cache.js` | 有界記憶體快取、同請求合併、失敗冷卻 |
+| `api/source-queue.js`、`source-budget.js` | 前景優先、來源間隔與滾動一小時預算 |
+| `api/source-errors.js` | 固定安全訊息，不洩露原始錯誤文字或憑證 |
+| `api/market.js`、`trading.js` | 股票目錄、行情快照與交易日曆 |
+| `api/charting.js`、`indicators.js`、`technical-events.js` | K 線聚合、技術計算與事件 |
+| `api/fundamentals.js`、`financial-metrics.js` | 純財務整理、比率及歷史計算 |
+| `api/equity.js`、`chip-workspace.js`、`ownership-provider.js` | 籌碼計算及官方揭露 |
+| `api/peers.js`、`media.js` | 同業比較與新聞資料 |
+| `api/strategy.js`、`research.js` | 策略回放與既有研究計算 |
+| `api/market-board.js`、`market-chips.js` | 大盤、期貨日夜盤與市場籌碼 |
+| `api/direct-research.js`、`research-packet.js` | 既有研究接口相容，僅接受明確來源讀取器 |
+
+財務、籌碼、同業及研究組裝不含 SQL 備援。缺少必要來源讀取器時立即回報設定錯誤，不嘗試連線資料庫。Agent 的工具定義、技能與對話流程留待下一階段調整，本次保留既有接口相容。
+
+## 快取、排隊與效能
+
+- 個股快照約 10 秒快取；股票來源資源最多 96 項，進行中的相同請求合併。K 線依區間通常 5 分鐘或 1 小時，財務／籌碼 30 分鐘。
+- FinMind 預設 1 秒間隔、單一 API 程序共用滾動一小時 300 次預算。每次重試也計入；額度用完回報狀態，不無限等待。實際帳戶或 IP 額度仍由來源判定，多程序部署需分配或共享預算。
+- 開啟中的財務優先於背景同業及新聞。若開啟正在背景取得的同一檔股票，提升原工作，不重複查詢。失敗退避等待不獨占來源隊列，已發送請求不強制中斷。
+- 財務來源未變動時重用計算結果；部分來源失敗一分鐘後可再查，仍有效的成功資料保留原接收時間，不整批重抓。
+- 權限拒絕依帳戶與資料集快取 30 分鐘，跨股票共用。更新 Token 並重建 API 後重新核對；Token 存在不代表具備所有會員權限。
+- 最新新聞可先顯示，逐日索引繼續補齊。同業完整名單先列出，只自動補可見頁面，仍可手動補齊全部。
+
+畫面切換耗時與來源完成耗時分開測量。冷啟動、長區間、來源逾時與配額仍會影響等待；不保證外部資料永遠秒開。`/health` 的 `source_activity` 提供排隊數、處理中資料集、耗時及本機預算，不包含 Token、查詢 URL 或股票代號。
+
+## 來源與限制
+
+上市短區間原始日線優先 TWSE 月報；超過 93 日使用單次 FinMind 區間查詢，失敗後改用官方月報。上櫃歷史與還原價依來源權限取得。每根 K 線保留實際來源、來源時間、接收時間與原始／還原價格口徑，不把四捨五入張數冒充精確股數。
+
+分鐘 K、主力集中度、券商分點需要相應 FinMind Sponsor 權限。股權歷史不足時可使用 TDCC 最新免費週資料，並清楚標示只含最新週、不回填成完整歷史。申報轉讓使用公開來源，空紀錄不等於權限不足，也不能推論歷史從未申報。
+
+一般基金持股、機構目標價尚未接入。指定主動 ETF 需追蹤清單及權限。加權指數沒有個股式五檔；台指期保留契約月份與日／夜盤，不拼接成未驗證連續契約。
+
+可以回看來源提供的歷史價格及財務序列，但不具備歷史當時可得版本與持久修訂紀錄。嚴格歷史時點研究回覆限制。未完成 K 線不產生正式收盤訊號，缺值不補零，回測與預測不保證績效。
+
+## 啟動、相容與儲存
+
+```sh
+npm ci
+npm run setup
+docker compose up -d --build api
 npm run dev
 ```
 
-### 獨立部署前端
+API `8000`，Vite `5173`，選用 Agent `8010`。正式前端部署 `web/dist`，代理股票 API 到 `8000`、助手到 `8010`。API 不提供前端靜態頁面。
 
-建置環境執行 `npm ci` 與 `npm run build`，將完整web/dist部署到靜態網站服務。正式前端不需Node背景程序，但網站服務需把 `/api/`、`/docs`、`/health` 與 `/openapi.json` 代理至API；前端使用同源相對網址，單純上傳到不支援代理的靜態空間仍無法連接後端。
+已刪除初始化 SQL、PostgreSQL 驅動／服務／設定、持久 worker、匯入實作、SQL 測試與遷移腳本。保留舊寫入接口的金鑰驗證與停用回應（`410`），避免改變既有認證邊界；舊工作查詢回空清單，不存在可執行的背景工作。一般看盤不使用 `INGEST_API_KEY`。
 
-Nginx範例位於 [web/deploy/nginx.conf](../web/deploy/nginx.conf)，請調整server_name、root與proxy_pass上游位址，並由主機提供HTTPS。上游請保留完整路徑與查詢參數。範例假設Nginx與API同主機；不同主機需自行配置可達的可信網路。
+對話與研究檔案仍位於 `sessions/`、`reports/`，本次不刪除。既有本機備份與已停止容器的歷史資料卷不作為執行依賴，也不以一般更新流程刪除。
 
-替換前端dist時應以完整版本切換，避免HTML指向缺少的雜湊資源。API不再託管web、images或工作台HTML；`/docs`仍保留API文件介面。正式發布前需在實際主機驗證代理、HTTPS、登入／存取控制及備份；本機Vite preview僅用於建置檢查。
+## 驗證
 
-## AI Agent 啟動
+`npm test` 驗證來源格式、權限、無 DB 依賴、認證邊界、計算、技術事件及既有 Session 相容。`npm run verify` 檢查真實 API 資料與策略回放；`npm run verify:browser` 驗證八區塊切換、有效財務數值、集保資料、新聞先顯示、策略回放及桌機／手機排版。外部來源失敗與程式測試失敗分別報告。
 
-目前採本機執行，安裝方式及 Windows 執行檔設定見 [README](../README.md#本機-codex-cli-與-ai-agent)。在與 CLI 登入相同的使用者帳號、相同 `CODEX_HOME` 下，於專案根目錄執行：
-
-```sh
-npm run assistant:setup
-codex login
-codex login status
-npm run assistant:start
-```
-
-終端保持開啟，`Ctrl+C` 停止本機 Agent；`docker compose down` 只停止股票容器。若 8010 已有 Agent，不要重複啟動。Node.js 橋接使用 `spawn` 直接啟動 CLI；Windows 的 `CODEX_BIN` 應指向原生 `codex.exe`，不指向 `.cmd` 包裝檔。實測版本為 CLI 0.162.0-alpha.17.2，版本變更需另驗證參數與 session 接續。
-
-在前台使用`.env`的`ASSISTANT_ACCESS_KEY`解鎖；它是個人平台存取密碼，不是OpenAI API Key。agent預設綁`127.0.0.1:8010`。`CODEX_BIN`可指定CLI完整路徑，`ASSISTANT_MODEL`可指定模型，`ASSISTANT_SESSION_DIR`可調整對話目錄，`ASSISTANT_REPORT_DIR`只控制舊報告封存位置。只接受`codex login status`顯示ChatGPT登入，分析強制`forced_login_method="chatgpt"`，子程序不傳入API Key或股票平台密鑰。
-
-登入使用簽章HttpOnly／SameSite=Strict cookie，12小時有效，不需資料表。登出清除目前瀏覽器cookie；輪替存取密碼並重啟agent會使所有舊cookie失效，不會隱藏既有檔案報告。此服務是單人助手，沒有多帳號或跨使用者權限系統。訂閱額度耗盡會顯示失敗，不切換API Key。
-
-Vite開發與預覽把 `/api/assistant` 優先代理到8010，其餘 `/api` 到8000。可用`ASSISTANT_PROXY_TARGET`及`API_PROXY_TARGET`調整。正式HTTPS須設定`ASSISTANT_COOKIE_SECURE=true`與`ASSISTANT_ALLOWED_ORIGINS`；代理同樣把助手路徑送到agent，其餘股票路徑送到股票API。別把sessions、reports或Codex認證目錄直接發布成靜態網站。
-
-Compose 僅定義 `postgres`、`api`、`scheduler`，不包含 AI Agent 或 Codex 認證 volume。Agent 在本機另行啟動，報告與 CLI 認證／會話也由本機保存。同一個連接埠與sessions目錄只使用一個 Agent 程序。
-
-## 驗證與維護
-
-文件記錄目前可重跑的入口，依修改範圍選擇檢查；原生Codex驗證會消耗訂閱額度並建立測試Session，瀏覽器驗證會新增對話與測試訊息。
-
-| 指令                                                           | 範圍與必要條件                                              |
-| -------------------------------------------------------------- | ----------------------------------------------------------- |
-| npm test                                                       | 現行 Node.js／前端單元測試；Agent 使用暫存目錄及測試 CLI    |
-| npm run format:check；npm run build                            | 程式格式與 Vite 建置                                        |
-| npm run verify                                                 | 運行中的 API、已存圖表與前後端隔離；WEB_BASE_URL 可加驗前端 |
-| docker compose exec -T api npm run verify:db                   | 交易內暫存表的資料庫整合；不修改正式股票表                  |
-| docker compose exec -T api npm run verify:worker               | 股票排程鎖及 running 心跳；不是 AI worker                   |
-| npm run verify:browser                                         | 個股互動與響應式；需 Vite／Chrome                           |
-| npm run verify:chips                                           | 九個籌碼子頁、股張換算、區間及彈窗                          |
-| npm run verify:market；npm run verify:market-layout            | 大盤行情互動、五檔及桌機／手機排版                          |
-| node scripts/verify_media_range.cjs                            | 隔離新聞區間測試資料，不證明外部新聞完整性                  |
-| docker compose exec -T api node tests/assistant.integration.js | 固定研究資料包、嚴格歷史修訂與股票 API 邊界                 |
-| npm run verify:assistant                                       | 真實訂閱Chat與Session接續，會消耗Codex額度                  |
-| npm run verify:assistant-browser                               | Chat工作區、Session隔離、研究卡片與響應式驗證               |
-
-scripts/setup_env.js 與 setup_assistant.js 是環境設定工具；verify_* 是按需維護工具，不是常駐服務。瀏覽器驗證可能建立行情擷取工作。所有驗證結果僅代表測試案例，不能視為全市場來源完整、預測有效或正式主機部署完成。
-
-### 舊助手資料遷移
-
-全新安裝不需執行。舊資料庫版本升級前，先停止舊 AI worker，備份資料庫並使用 scripts/export_legacy_reports.js 轉存報告。確認 Markdown／JSON、原始輸入與對話後，scripts/remove_legacy_assistant_tables.js 才核對並移除六張已廢棄助手表；股票資料表保留。兩個工具需要有效資料庫連線及 agent/report-store.js，不屬於服務啟動流程，也不應在新環境例行執行。
-
-### AI 價差與損益驗證
-
-`calculate_trade_profit`是本地唯讀MCP工具，使用decimal.js核算（賣價－買價）×股數。市場情境價格限定本次個股K線、快照、情境價或價格指標按商品合法跳檔調整；user_cost可引用Session明示成本，但不升格為市場委託價，股數限定本次使用者明示張／股，不接受AI任意價格或預設部位。計算回應和工具證據沿用本次截止與查詢稽核；保存研究報告時，損益文字需對應成功計算。一般Chat不做全文正則攔截。未提供費用不計算淨利。價位驗證識別「負0.23元」、全形負號及「毛損失1400元」的負數語意；保存報告的工具驗證失敗時回覆錯誤，由Codex自行修正。前端終止狀態明示失敗／取消／中斷，不繼續顯示整理中。
-
-### 行情快照修訂
-
-相同market／symbol／source_time的公開行情，內容相同僅重複觀察時保留首次received_at；內容變動時先將原版本保存於quote_revisions，再更新正式快照。歷史研究從正式版本與修訂版本中選截止前已接收且行情時間不晚於截止者。此機制只保護升級後取得的修訂；升級前已被覆寫的內容不能自動還原，舊報告檔案不回寫。
-
-### 共用K棒技術事件
-
-api/technical-events.js提供純函式annotateTechnicalRows與technical-events-v1，api/charting.js先聚合完成K線再套用；report-conditions.js與agent/tools.js也套用同一規則。先計算暖機資料的交叉，再依所選區間過濾，避免區間第一根遺失事件。每根保存technical_state、technical_events與signals；事件含時間戳、方向、類別、數值依據與版本。未完成K不更新正式比較前值，沒有前值不猜測交叉。
-
-web/src/views/technical-markers.js是兩個趨勢圖共用的SVG標記繪製器，方向分開、文字避讓、鍵盤與點選保留K棒定位。Chat的technical工具按模型要求分頁，每頁最多120根，圖表同樣以實際取得K棒顯示。事件定位ID與引用證據ID分開；既有報告不重新計算新事件。瀏覽器驗證使用真實資料包檢查兩種圖表與分類操作，不為驗證啟動模型。
+2026-11-20 清理後驗證：58 項現行測試、前端建置、八區塊 API 驗證及瀏覽器驗證通過，包含真正執行策略回放。2409 取得 83 個有值財務指標、17 級集保資料；八區塊首屏切換單次量測約 29～34 毫秒。冷載入財務約 5.85 秒、籌碼約 4.22 秒；數字僅代表本次樣本，並非來源延遲保證。既有研究接口另測 HTTP 200、`database_used=false`，本次未執行 Codex 模型分析。

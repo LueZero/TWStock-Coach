@@ -13,17 +13,24 @@ import {
   renderInsight,
 } from "./../views/research-view.js";
 import { initChipWorkspace } from "../views/chip-workspace-view.js";
-import { postOptions, loadFinancials } from "./analysis-controller.js";
 
 let equityVersion = 0,
   equityStock = "",
   equitySignature = "";
 
 const equityLoads = new Set();
+const equityViews = new Map();
+let equityTimer;
+
+function renderActiveResearch() {
+  if ($("dashboardGrid").dataset.view === "basic") renderBasic();
+  if ($("dashboardGrid").dataset.view === "chips") renderChips();
+}
 
 function researchSignature() {
   return JSON.stringify([
     stockKey(),
+    $("dashboardGrid").dataset.view,
     state.range,
     $("financialMode").value,
     state.selected?.timestamp,
@@ -34,6 +41,8 @@ function researchChanged() {
   if (equityStock !== stockKey()) {
     equityStock = stockKey();
     equitySignature = "";
+    equityViews.clear();
+    clearTimeout(equityTimer);
     equityVersion++;
     state.equityData = null;
     if (state.insight) bootstrap.Modal.getInstance($("insightModal"))?.hide();
@@ -42,7 +51,12 @@ function researchChanged() {
     renderChips();
   }
   const view = $("dashboardGrid").dataset.view;
-  if (!["basic", "chips"].includes(view)) return;
+  if (!["basic", "chips"].includes(view)) {
+    clearTimeout(equityTimer);
+    equityVersion++;
+    equitySignature = "";
+    return;
+  }
   const signature = researchSignature();
   if (signature === equitySignature) return;
   equitySignature = signature;
@@ -50,19 +64,28 @@ function researchChanged() {
   const load =
     $("financialMode").value !== "historical" && !equityLoads.has(loadKey);
   if (load) equityLoads.add(loadKey);
+  const cached = equityViews.get(signature);
+  if (cached) {
+    state.equityData = cached.response.data;
+    renderActiveResearch();
+    if (Date.now() - cached.at < 30000 && cached.response.state !== "updating")
+      return;
+  }
   refreshEquity(load);
 }
 
-async function refreshEquity(load = false) {
+async function refreshEquity(load = false, attempt = 0) {
   const version = ++equityVersion,
     key = stockKey(),
     signature = researchSignature();
   const historical = $("financialMode").value === "historical",
     bar = analysisBar();
-  state.equityData = null;
-  $("basicStatus").textContent = "正在讀取公司基本資料…";
-  renderBasic();
-  renderChips();
+  clearTimeout(equityTimer);
+  if (attempt === 0) {
+    state.equityData = equityViews.get(signature)?.response.data || null;
+    $("basicStatus").textContent = "正在讀取公司基本資料…";
+    renderActiveResearch();
+  }
   const params = new URLSearchParams({
     start: state.range.start,
     end: state.range.end,
@@ -87,36 +110,26 @@ async function refreshEquity(load = false) {
     key === stockKey() &&
     signature === researchSignature();
   try {
-    const data = await analysisJson(
-      `/api/equity/${state.stock.market}/${state.stock.symbol}?${params}`,
+    const response = await analysisJson(
+      `/api/stock-data/${state.stock.market}/${state.stock.symbol}?section=${$("dashboardGrid").dataset.view === "basic" ? "basic" : "equity"}&${params}`,
     );
+    const data = response.data;
     if (!current()) return;
+    equityViews.set(signature, { response, at: Date.now() });
+    if (equityViews.size > 16)
+      equityViews.delete(equityViews.keys().next().value);
     state.equityData = data;
-    renderBasic();
-    renderChips();
+    renderActiveResearch();
     $("basicStatus").textContent =
       `${state.stock.name} ${state.stock.symbol} · 公司基本資料與機構研究。`;
     $("chipStatus").textContent =
-      `${state.stock.name} ${state.stock.symbol} · ${data.start} 至 ${data.end} · ${historical ? "所選 K 線當時可得" : "最新取得修訂"} · 盤後資料，各子頁更新頻率不同。`;
-    if (load && !historical) {
-      const job = await analysisJson(
-        "/api/equity/load",
-        postOptions({
-          market: state.stock.market,
-          symbol: state.stock.symbol,
-          end: state.range.end,
-        }),
-      );
-      if (!current()) return;
-      if (["queued", "running"].includes(job.status))
-        pollEquity(job.job_id, version, key, signature, 0);
-      else {
-        const result = await analysisJson("/api/jobs/" + job.job_id);
-        if (!current()) return;
-        await refreshEquity(false);
-        if (key === stockKey() && signature === researchSignature())
-          renderEquityLoadStatus(result.details?.datasets || {});
-      }
+      `${state.stock.name} ${state.stock.symbol} · ${data.start} 至 ${data.end} · ${historical ? "不提供歷史當時可得版本" : "來源 API／記憶體快取，無 DB"} · 盤後資料，各子頁更新頻率不同。`;
+    if (response.state === "updating" && attempt < 180)
+      pollEquity(null, version, key, signature, attempt);
+    else if (!historical) {
+      renderEquityLoadStatus(response.update.details?.datasets || {});
+      if (response.update.message)
+        $("chipStatus").textContent += " " + response.update.message;
     }
   } catch (error) {
     if (current()) {
@@ -146,7 +159,7 @@ function renderEquityLoadStatus(datasets) {
 }
 
 function pollEquity(id, version, key, signature, attempt) {
-  setTimeout(async () => {
+  equityTimer = setTimeout(async () => {
     if (
       version !== equityVersion ||
       key !== stockKey() ||
@@ -154,22 +167,7 @@ function pollEquity(id, version, key, signature, attempt) {
     )
       return;
     try {
-      const job = await analysisJson("/api/jobs/" + id);
-      if (
-        version !== equityVersion ||
-        key !== stockKey() ||
-        signature !== researchSignature()
-      )
-        return;
-      if (["queued", "running"].includes(job.status) && attempt < 180) {
-        $("chipStatus").textContent =
-          `籌碼來源載入中：完成 ${Object.keys(job.details?.datasets || {}).length} 個資料集；付費項目不以免費數字替代。`;
-        pollEquity(id, version, key, signature, attempt + 1);
-      } else {
-        await refreshEquity(false);
-        if (key === stockKey() && signature === researchSignature())
-          renderEquityLoadStatus(job.details?.datasets || {});
-      }
+      await refreshEquity(true, attempt + 1);
     } catch (error) {
       if (version === equityVersion)
         $("chipStatus").textContent = error.message;
@@ -224,7 +222,6 @@ export function initResearchController() {
       }),
   );
   $("refreshBasic").onclick = () => {
-    loadFinancials();
     refreshEquity(true);
   };
   $("refreshChips").onclick = () => refreshEquity(true);

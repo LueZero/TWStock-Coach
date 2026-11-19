@@ -4,6 +4,8 @@ import { $ } from "../views/dashboard-view.js";
 let signature = "",
   version = 0,
   abort;
+let loading = false,
+  progress = null;
 const node = (tag, value, cls) => {
   const e = document.createElement(tag);
   if (value != null) e.textContent = value;
@@ -77,25 +79,88 @@ async function load(force = false) {
   const current = ++version;
   abort?.abort();
   abort = new AbortController();
+  const fresh = force || progress?.sig !== sig;
+  if (fresh)
+    progress = {
+      sig,
+      news: [],
+      discussions: [],
+      failures: new Set(),
+      sources: new Map(),
+      cursor: start,
+      processed: 0,
+    };
+  const batch = progress;
+  const currentRequest = () => current === version && key === stockKey();
+  loading = true;
   $("mediaCompanyTitle").textContent =
     `${state.stock.name || state.stock.symbol} · 公司新聞與討論`;
   $("mediaStatus").textContent = "正在取得公司新聞與公開文章…";
-  list("companyNews", [], "正在查詢公司新聞…");
-  list("companyDiscussions", [], "正在查詢公開討論…");
+  if (fresh) {
+    list("companyNews", [], "正在查詢公司新聞…");
+    list("companyDiscussions", [], "正在查詢公開討論…");
+  }
   $("mediaSources").replaceChildren();
   $("mediaSearchLinks").replaceChildren();
   $("mediaNotes").textContent = "";
   try {
-    const news = [],
-      discussions = [],
-      failures = new Set(),
-      sources = new Map();
-    let cursor = start,
+    const { news, discussions, failures, sources } = batch;
+    // Recent RSS articles are independent of the paced historical index.
+    // Show them as soon as available instead of waiting for every index day.
+    const recent = batch.recentDone
+      ? Promise.resolve()
+      : (async () => {
+          try {
+            const params = new URLSearchParams({
+              start,
+              end,
+              source: "recent",
+            });
+            const response = await fetch(
+              `/api/media/${state.stock.market}/${state.stock.symbol}?${params}`,
+              {
+                signal: AbortSignal.any([
+                  abort.signal,
+                  AbortSignal.timeout(30000),
+                ]),
+              },
+            );
+            const page = await response.json();
+            if (!response.ok)
+              throw Error(page.detail || "近期文章暫時無法取得");
+            if (!currentRequest()) return;
+            news.push(...page.news);
+            discussions.push(...page.discussions);
+            for (const source of page.sources) sources.set(source.id, source);
+            batch.recentDone = true;
+            list(
+              "companyNews",
+              merged(news),
+              "近期來源尚無符合區間的公司新聞，歷史索引仍在查詢…",
+            );
+            list(
+              "companyDiscussions",
+              merged(discussions),
+              "近期來源尚無符合區間的公開討論…",
+            );
+            $("mediaStatus").textContent =
+              "近期文章已查詢，正在補齊所選區間的公司索引…";
+          } catch (error) {
+            if (currentRequest() && !abort.signal.aborted)
+              batch.recentError = "近期文章來源未完成；目前清單可能不完整。";
+          }
+        })();
+    let cursor = batch.cursor,
       data,
-      processed = 0;
+      processed = batch.processed;
     const total = (Date.parse(end) - Date.parse(start)) / 86400000 + 1;
     do {
-      const params = new URLSearchParams({ start, end, cursor });
+      const params = new URLSearchParams({
+        start,
+        end,
+        cursor,
+        source: "index",
+      });
       const response = await fetch(
         `/api/media/${state.stock.market}/${state.stock.symbol}?${params}`,
         { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(45000)]) },
@@ -131,7 +196,19 @@ async function load(force = false) {
       $("mediaStatus").textContent =
         `正在載入 ${start}～${end} · ${processed}／${total} 日 · 新聞 ${data.news.length} 筆／公開討論 ${data.discussions.length} 筆`;
       cursor = data.next_cursor;
+      batch.cursor = cursor;
+      batch.processed = processed;
     } while (cursor);
+    await recent;
+    if (!currentRequest()) return;
+    data.news = merged(news);
+    data.discussions = merged(discussions);
+    list("companyNews", data.news, "所選區間未取得符合此公司的新聞。");
+    list(
+      "companyDiscussions",
+      data.discussions,
+      "所選區間未取得符合此公司的公開討論。",
+    );
     data.sources = [...sources.values()];
     for (const s of data.sources) {
       $("mediaSources").append(
@@ -149,7 +226,10 @@ async function load(force = false) {
       a.rel = "noopener noreferrer";
       $("mediaSearchLinks").append(a);
     }
-    $("mediaNotes").textContent = (data.notes || []).join(" ");
+    $("mediaNotes").textContent = [
+      ...(data.notes || []),
+      ...(batch.recentError ? [batch.recentError] : []),
+    ].join(" ");
     $("mediaStatus").textContent =
       data.warning ||
       `公司索引區間 ${start}～${end} · 新聞 ${data.news.length} 筆／公開討論 ${data.discussions.length} 筆${failures.size ? ` · 資料不完整：${[...failures].join("、")} 公司索引未取得，請重新套用` : " · 區間查詢完成"}${data.sources.some((s) => s.stale) ? " · 部分來源為先前快取" : ""}`;
@@ -159,6 +239,8 @@ async function load(force = false) {
     signature = "";
     $("mediaStatus").textContent =
       `區間查詢未完成：${error.message}。目前清單僅為已載入部分，請重新套用。`;
+  } finally {
+    if (current === version) loading = false;
   }
 }
 let stock = "";
@@ -168,6 +250,17 @@ export function mediaChanged() {
     signature = "";
     version++;
     abort?.abort();
+    loading = false;
+    progress = null;
+  }
+  if ($("dashboardGrid").dataset.view !== "news") {
+    if (loading) {
+      version++;
+      abort?.abort();
+      loading = false;
+      signature = "";
+    }
+    return;
   }
   load();
 }

@@ -9,14 +9,11 @@ import {
   priorYear,
   daysBetween,
   taipeiDay,
-  canonical,
-  digest,
-  validDate,
   now,
   fail,
 } from "./lib.js";
 import { extendMetrics } from "./financial-metrics.js";
-import { rows, transaction } from "./db.js";
+
 const I = "TaiwanStockFinancialStatements",
   B = "TaiwanStockBalanceSheet",
   C = "TaiwanStockCashFlowsStatement",
@@ -647,80 +644,16 @@ export function summarize(data, cutoff = taipeiDay(), withHistory = true) {
   }
   return result;
 }
-export async function saveSnapshot(
-  market,
-  symbol,
-  dataset,
-  data,
-  source = "finmind",
-  receivedAt = now(),
-) {
-  for (const r of data)
-    if (r.stock_id !== symbol || validDate(r.date) > taipeiDay())
-      fail("來源股票或日期不符");
-  const sorted = [...data].sort((a, b) =>
-      canonical(a) < canonical(b) ? -1 : canonical(a) > canonical(b) ? 1 : 0,
-    ),
-    hash = digest({ source, rows: sorted });
-  return transaction(async (client) => {
-    await client.query("SELECT pg_advisory_xact_lock(78241004)");
-    const old = (
-      await client.query(
-        "SELECT * FROM fundamental_snapshots WHERE market=$1 AND symbol=$2 AND dataset=$3 ORDER BY id DESC LIMIT 1",
-        [market, symbol, dataset],
-      )
-    ).rows[0];
-    // Normalized equality preserves existing revisions across JSON serializers.
-    if (
-      old?.digest === hash ||
-      (old?.source === source &&
-        canonical(
-          [...old.data].sort((a, b) =>
-            canonical(a) < canonical(b)
-              ? -1
-              : canonical(a) > canonical(b)
-                ? 1
-                : 0,
-          ),
-        ) === canonical(sorted))
-    )
-      return old;
-    return (
-      await client.query(
-        "INSERT INTO fundamental_snapshots(market,symbol,dataset,source,received_at,digest,revision,data) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-        [
-          market,
-          symbol,
-          dataset,
-          source,
-          receivedAt,
-          hash,
-          (old?.revision ?? 0) + 1,
-          JSON.stringify(sorted),
-        ],
-      )
-    ).rows[0];
-  });
-}
-export async function snapshots(
-  market,
-  symbol,
-  cutoff = now(),
-  datasets = Object.keys(DATASETS),
-) {
-  return rows(
-    "SELECT * FROM fundamental_snapshots WHERE market=$1 AND symbol=$2 AND received_at<=$3 AND dataset=ANY($4) ORDER BY id DESC",
-    [market, symbol, cutoff, datasets],
-  );
-}
 export async function view(
   market,
   symbol,
   cutoff = now(),
   includeRaw = false,
   fiscalCutoff = null,
+  readSnapshots,
 ) {
-  const all = await snapshots(market, symbol, cutoff),
+  if (typeof readSnapshots !== "function") fail("財務來源讀取器未設定", 500);
+  const all = await readSnapshots(market, symbol, cutoff),
     selected = {};
   for (const s of all) selected[s.dataset] ??= s;
   const fiscal =

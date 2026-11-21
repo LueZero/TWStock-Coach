@@ -34,11 +34,19 @@ import { refreshLatestStock } from "./latest-data.js";
 import { directResearch } from "./direct-research.js";
 import { sourceActivity } from "./providers.js";
 import {
+  fundNav,
+  fundPortfolio,
+  fundHolders,
+  fundQuarterly,
+} from "./fund-data.js";
+import { isEtf } from "./data-availability.js";
+import {
   barsResource,
   directBars,
   directFinancial,
   directEquity,
   directPeers,
+  directValuationBands,
 } from "./direct-data.js";
 const choice = (v, values, fallback) => {
     v ??= fallback;
@@ -129,6 +137,7 @@ export async function chart(market, symbol, q, wait = true) {
           : "unavailable"
         : "ready",
     source_warning: source.error || source.value?.warnings?.join("；") || null,
+    source_error_code: source.error_code || null,
     received_at: source.received_at || null,
     note: minute
       ? "分鐘資料需授權來源；沒有成交或缺漏分鐘不補零。聚合完成表示區間已結束，不保證資料無缺漏。"
@@ -475,6 +484,42 @@ export async function createApp({ logger = false } = {}) {
   post("/api/equity/import", async (request) => {
     authorize(request.headers["x-api-key"]);
     fail("此匯入介面已移除；股票資料由來源 API 按需取得。", 410);
+  });
+  get("/api/valuation-bands/:market/:symbol", async (request) => {
+    const [market, symbol] = pair(request),
+      q = request.query;
+    if (isEtf(symbol)) fail("ETF 不適用公司估值倍數");
+    dateRange(q, { future: false, max: 1826 });
+    return directValuationBands(
+      market,
+      symbol,
+      q.start,
+      q.end,
+      choice(q.field, ["PER", "PBR"], "PER"),
+    );
+  });
+  get("/api/fund-data/:market/:symbol", async (request) => {
+    const [market, symbol] = pair(request),
+      q = request.query;
+    const section = choice(
+      q.section,
+      ["nav", "portfolio", "holders", "quarterly"],
+      "nav",
+    );
+    const end = q.end || taipeiDay(),
+      start = q.start || addDays(end, -365);
+    dateRange({ start, end }, { future: false, max: 3653 });
+    if (
+      !(await getCatalog()).some(
+        (i) => i.market === market && i.symbol === symbol,
+      )
+    )
+      fail("股票目錄沒有此市場與代號", 404);
+    if (section !== "holders" && !isEtf(symbol)) fail("請選擇 ETF 代號");
+    if (section === "nav") return fundNav(market, symbol, start, end);
+    if (section === "portfolio") return fundPortfolio(market, symbol, end);
+    if (section === "quarterly") return fundQuarterly(market, symbol, end);
+    return fundHolders(market, symbol, end);
   });
   get("/api/peers/:market/:symbol", (request) => {
     const q = request.query,

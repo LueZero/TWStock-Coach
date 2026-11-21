@@ -22,6 +22,7 @@ export function resource(key, load, ttl = 300000, { retryWhen } = {}) {
     pending: true,
     at: Date.now(),
     error: null,
+    error_code: null,
   };
   cache.set(key, entry);
   entry.promise = Promise.resolve()
@@ -32,6 +33,7 @@ export function resource(key, load, ttl = 300000, { retryWhen } = {}) {
         entry.received_at = new Date().toISOString();
       },
       (error) => {
+        entry.error_code = error.code || null;
         entry.error =
           error.statusCode === 422 ||
           [

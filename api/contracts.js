@@ -123,6 +123,14 @@ export function contract(path, method) {
   if (path.includes(":market"))
     schema.params = object(pair, ["market", "symbol"]);
   const queries = {
+    "/api/valuation-bands/:market/:symbol": object(
+      { ...range, field: enumOf("PER", "PBR") },
+      ["start", "end"],
+    ),
+    "/api/fund-data/:market/:symbol": object({
+      section: enumOf("nav", "portfolio", "holders", "quarterly"),
+      ...range,
+    }),
     "/api/stock-data/:market/:symbol": object({
       section: enumOf("chart", "financial", "equity", "basic"),
       ...range,

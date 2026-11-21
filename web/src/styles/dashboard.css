@@ -2120,6 +2120,32 @@ body {
 #financialMetrics {
   display: block;
 }
+.fund-research {
+  min-width: 0;
+}
+.financial-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #2e465c;
+  border-radius: 8px;
+}
+.financial-table-wrap table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.financial-table-wrap th,
+.financial-table-wrap td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid #2e465c;
+  font-size: 14px;
+}
+.financial-table-wrap th {
+  color: #a5c4da;
+  background: #102134;
+}
 .research-card {
   background: linear-gradient(145deg, #152a40, #102134);
   border: 1px solid #2e465c;

@@ -1,5 +1,6 @@
 import { summarize, DATASETS } from "./fundamentals.js";
 import { now, num, median, daysBetween, fail } from "./lib.js";
+import { isEtf } from "./data-availability.js";
 export const FIELDS = [
   ["per", "本益比", "倍", "TaiwanStockPER", 14],
   ["pbr", "股價淨值比", "倍", "TaiwanStockPER", 14],
@@ -140,8 +141,9 @@ export async function report(
         mismatch = alignment === "common" && p !== common[d],
         v = mismatch ? null : num(m.value),
         age = p ? daysBetween(reference, p.length === 7 ? p + "-01" : p) : null,
-        status =
-          v == null
+        status = isEtf(i.symbol)
+          ? "not_applicable"
+          : v == null
             ? "missing"
             : age == null || age < 0 || age > maxAge
               ? "stale"
@@ -150,15 +152,17 @@ export async function report(
         value: v,
         period: p,
         status,
-        reason: !sources[k]?.[d]
-          ? "尚未擷取來源"
-          : mismatch
-            ? "未提供本檔比較期間資料"
-            : v == null
-              ? "來源未提供此數值"
-              : status === "stale"
-                ? "超過資料有效期間"
-                : "",
+        reason: isEtf(i.symbol)
+          ? "ETF 不適用公司財報比較；基金淨值、折溢價及同類基金比較尚未接入。"
+          : !sources[k]?.[d]
+            ? "尚未擷取來源"
+            : mismatch
+              ? "未提供本檔比較期間資料"
+              : v == null
+                ? "來源未提供此數值"
+                : status === "stale"
+                  ? "超過資料有效期間"
+                  : "",
         source: sources[k]?.[d] ?? null,
       };
     }
@@ -170,7 +174,8 @@ export async function report(
       selected: k === key(target),
       same_industry: !!target.industry && i.industry === target.industry,
       business_peer: business(i),
-      load_required: FIELDS.some((f) => !sources[k]?.[f[3]]),
+      load_required:
+        !isEtf(i.symbol) && FIELDS.some((f) => !sources[k]?.[f[3]]),
       metrics: cells,
       available: Object.values(cells).filter((c) => c.status === "available")
         .length,
@@ -223,6 +228,8 @@ export async function report(
       name,
       industry,
     })),
-    note: "分類只代表同產業候選，不保證相同業務或會計口徑。中位數只含至少2家有有效資料的同產業比較公司，不含本檔；缺值、過期、跨產業不加入。各自最新模式期間可能不同。單季EPS不可當作規模或報酬排名；估值低不代表值得買。金融業等需使用適合產業的指標。",
+    note: isEtf(symbol)
+      ? "ETF 不適用公司財報同業比較；基金淨值、折溢價及同類基金比較尚未接入，不因重試載入公司財報而補齊。"
+      : "分類只代表同產業候選，不保證相同業務或會計口徑。中位數只含至少2家有有效資料的同產業比較公司，不含本檔；缺值、過期、跨產業不加入。各自最新模式期間可能不同。單季EPS不可當作規模或報酬排名；估值低不代表值得買。金融業等需使用適合產業的指標。",
   };
 }

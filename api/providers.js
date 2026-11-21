@@ -255,6 +255,30 @@ export function* chunks(start, end) {
 const profileCache = new Map();
 let tdccCache;
 export async function companyProfile(market, symbol) {
+  if (market === "TWSE" && /^00\d{2,}[A-Z]?$/i.test(symbol)) {
+    const url = "https://openapi.twse.com.tw/v1/opendata/t187ap47_L";
+    let cached = profileCache.get("TWSE_FUNDS");
+    if (!cached || Date.now() - cached.at > 86400000) {
+      const items = await fetchJSON(url, 20000);
+      if (!Array.isArray(items)) throw Error("基金資料格式不符");
+      cached = { at: Date.now(), items };
+      profileCache.set("TWSE_FUNDS", cached);
+    }
+    const original = cached.items.find(
+      (r) => String(r["基金代號"]).trim() === symbol,
+    );
+    return original
+      ? [
+          {
+            stock_id: symbol,
+            date: taipeiDay(),
+            source_url: url,
+            instrument_type: "etf",
+            profile: original,
+          },
+        ]
+      : [];
+  }
   const url =
     market === "TWSE"
       ? "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"

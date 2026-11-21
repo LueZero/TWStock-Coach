@@ -158,6 +158,18 @@ async function until(expression, timeout = 180000) {
     const metrics = await evaluate(
       "globalThis.stockCoach.state.financialData.metrics.filter(m=>m.value!=null).length",
     );
+    await evaluate(
+      'document.querySelector("[data-financial-category=statements]").click();document.querySelector("[data-financial-page=nav]").click()',
+    );
+    await until(
+      'document.getElementById("financialMetrics").textContent.includes("官方每股參考淨值")',
+    );
+    await evaluate(
+      'document.querySelector("[data-financial-category=valuation]").click();document.querySelector("[data-financial-page=pb-band]").click()',
+    );
+    await until(
+      'document.querySelectorAll("#financialMetrics .fund-research svg path").length>0',
+    );
     const navigation = await evaluate(
       `(${async function () {
         const results = [];
@@ -288,6 +300,18 @@ async function until(expression, timeout = 180000) {
         return results;
       }.toString()})()`,
     );
+    assert.equal(
+      await evaluate(
+        'globalThis.stockCoach.state.equityData.coverage.find(r=>r.dataset==="TaiwanStockHoldingSharesPer").source',
+      ),
+      "tdcc_history",
+    );
+    assert.ok(
+      await evaluate(
+        "new Set(globalThis.stockCoach.state.equityData.details.distribution.map(r=>r.date)).size>=3",
+      ),
+      "免費集保應取得區間多週，不只最新一週",
+    );
     assert.ok(
       chipAvailability
         .filter((r) =>
@@ -299,6 +323,121 @@ async function until(expression, timeout = 180000) {
       chipAvailability
         .find((r) => r.tab === "fund-holdings")
         .notice.includes("尚未接入"),
+    );
+    await evaluate(
+      'globalThis.stockCoach.selectSection("overview",false);document.getElementById("stockInput").value="00927";document.getElementById("searchForm").requestSubmit()',
+    );
+    await until(
+      'globalThis.stockCoach.state.stock.symbol==="00927"&&document.getElementById("stockInput").value===""',
+    );
+    await evaluate('globalThis.stockCoach.selectSection("basic",false)');
+    await until(
+      'document.getElementById("companyProfile").textContent.includes("基金類型")&&document.getElementById("companyProfile").textContent.includes("半導體")',
+    );
+    await evaluate('globalThis.stockCoach.selectSection("financial",false)');
+    await until(
+      'globalThis.stockCoach.state.financialData?.instrument_type==="etf"&&globalThis.stockCoach.state.financialData.dividends.length>0&&document.getElementById("financialSubpageSelect").value==="dividend-policy"',
+    );
+    await evaluate(
+      'document.querySelector("[data-financial-category=profitability]").click()',
+    );
+    await until(
+      'document.getElementById("financialSummary").textContent.includes("不適用 ETF")',
+    );
+    await evaluate(
+      'document.querySelector("[data-financial-category=valuation]").click()',
+    );
+    await until(
+      'document.getElementById("financialSubpageSelect").value==="etf-nav"&&document.querySelectorAll("#financialMetrics .fund-research svg path").length>0&&document.querySelectorAll("#financialMetrics .fund-research .research-card").length===4',
+    );
+    await evaluate(
+      'document.querySelector("[data-financial-page=etf-portfolio]").click()',
+    );
+    await until(
+      'document.querySelectorAll("#financialMetrics .fund-research table tr").length>=31',
+    );
+    const portfolioDay = await evaluate(
+      '(async()=>{const r=await(await fetch("/api/fund-data/TWSE/00927?section=portfolio&end="+globalThis.stockCoach.state.range.end)).json();return r.date;})()',
+    );
+    assert.match(portfolioDay, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(
+      await evaluate(
+        'document.querySelectorAll("#financialMetrics .fund-research input[type=date]").length',
+      ),
+      1,
+      "僅最新組合不應提供無效起始日欄位",
+    );
+    await evaluate(
+      `document.querySelector("#financialMetrics .fund-research input[type=date]").value=${JSON.stringify(portfolioDay)};document.querySelector("#financialMetrics .fund-research button").click()`,
+    );
+    await until(
+      'document.querySelectorAll("#financialMetrics .fund-research table tr").length>=31',
+    );
+    const priorDay = new Date(
+      Date.parse(portfolioDay + "T00:00:00Z") - 86400000,
+    )
+      .toISOString()
+      .slice(0, 10);
+    await evaluate(
+      `document.querySelector("#financialMetrics .fund-research input[type=date]").value=${JSON.stringify(priorDay)};document.querySelector("#financialMetrics .fund-research button").click()`,
+    );
+    await until(
+      'document.getElementById("financialMetrics").textContent.includes("來源資料不在查詢範圍")',
+    );
+    assert.equal(
+      await evaluate(
+        'document.querySelectorAll("#financialMetrics .fund-research table").length',
+      ),
+      0,
+      "區間外不應顯示誤導的零筆表格",
+    );
+    await evaluate(
+      `document.querySelector("#financialMetrics .fund-research input[type=date]").value=${JSON.stringify(portfolioDay)};document.querySelector("#financialMetrics .fund-research button").click()`,
+    );
+    await until(
+      'document.querySelectorAll("#financialMetrics .fund-research table tr").length>=31',
+    );
+    await send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 1100,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    assert.ok(
+      await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),
+      "ETF 組合不可撐出頁面寬度",
+    );
+    await send("Emulation.setDeviceMetricsOverride", {
+      width: 1440,
+      height: 1100,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await evaluate('globalThis.stockCoach.selectSection("peers",false)');
+    await until(
+      'document.getElementById("peerNotes").textContent.includes("預估淨值")&&document.getElementById("peerRows").children.length>0',
+    );
+    await evaluate(
+      'globalThis.stockCoach.selectSection("overview",false);document.getElementById("stockInput").value="00878";document.getElementById("searchForm").requestSubmit()',
+    );
+    await until(
+      'globalThis.stockCoach.state.stock.symbol==="00878"&&document.getElementById("stockInput").value===""',
+    );
+    await evaluate('globalThis.stockCoach.selectSection("financial",false)');
+    await until(
+      'globalThis.stockCoach.state.financialData?.instrument_type==="etf"&&globalThis.stockCoach.state.financialData.source_status==="ready"',
+    );
+    await evaluate(
+      'document.querySelector("[data-financial-category=valuation]").click();document.querySelector("[data-financial-page=etf-quarterly]").click()',
+    );
+    await until(
+      'document.querySelectorAll("#financialMetrics .fund-research table tr").length>1',
+    );
+    assert.deepEqual(
+      await evaluate(
+        '[...document.querySelectorAll("#financialMetrics .fund-research th")].map(n=>n.textContent)',
+      ),
+      ["資產類別", "產業", "標的名稱", "占基金權重（%）"],
     );
     await evaluate('globalThis.stockCoach.selectSection("indices",false)');
     await until(
@@ -332,6 +471,13 @@ async function until(expression, timeout = 180000) {
         financial_metrics: metrics,
         navigation,
         progressive_news: progressiveNews,
+        etf_applicability: true,
+        etf_nav_portfolio: true,
+        pcf_cutoff_filter: true,
+        public_tdcc_history: true,
+        cathay_quarterly: true,
+        official_book_value: true,
+        source_multiple_bands: true,
         chip_api: true,
         chip_availability: chipAvailability.map((r) => ({
           tab: r.tab,

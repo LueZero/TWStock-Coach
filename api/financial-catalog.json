@@ -26,15 +26,11 @@
       {
         "id": "nav",
         "label": "每股淨值",
-        "keys": [],
-        "report": "TaiwanStockBalanceSheet",
-        "fields": [
-          "EquityAttributableToOwnersOfParent",
-          "OrdinaryShare",
-          "CapitalStock"
-        ],
-        "note": "",
-        "requires": "需要各期流通普通股數、庫藏股、特別股權益與面額。股本金額不能當成股數，庫藏股數不能當流通股數。",
+        "keys": ["book_value_per_share"],
+        "report": null,
+        "fields": null,
+        "requires": null,
+        "note": "直接使用官方每股參考淨值，僅提供來源最新季，不以股本金額推算股數，也不將最新值回填過往季度。",
         "kind": "metrics"
       },
       {
@@ -444,13 +440,13 @@
       },
       {
         "id": "pe-band",
-        "label": "本益比河流圖",
+        "label": "本益比參考帶（來源倍數換算）",
         "keys": ["per"],
         "report": null,
         "fields": null,
         "note": "",
-        "requires": "需要同股數基準的連續 TTM EPS、股價及除權／分割事件。來源本益比可查歷史，尚不轉成河流價格帶。",
-        "kind": "metrics"
+        "requires": null,
+        "kind": "source_per_band"
       },
       {
         "id": "pb",
@@ -464,13 +460,13 @@
       },
       {
         "id": "pb-band",
-        "label": "股價淨值比河流圖",
+        "label": "淨值比參考帶（來源倍數換算）",
         "keys": ["pbr"],
         "report": null,
         "fields": null,
         "note": "",
-        "requires": "需要各期可驗證每股淨值、原始股價及公司行動；不拿當期淨值套用所有過往價格。",
-        "kind": "metrics"
+        "requires": null,
+        "kind": "source_pbr_band"
       },
       {
         "id": "dividend-yield",

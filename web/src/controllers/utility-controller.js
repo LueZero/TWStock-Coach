@@ -1,4 +1,5 @@
 import { postOptions } from "./analysis-controller.js";
+import { renderFundPeers } from "../views/fund-view.js";
 import {
   $,
   textCell,
@@ -499,6 +500,15 @@ function loadVisiblePeers() {
 function renderPeers() {
   const data = peerData;
   if (!data) return;
+  const fund = data.instrument_type === "etf";
+  $("loadPeers").hidden = fund;
+  $("peerTableGroup").hidden = fund;
+  $("peerScope").options[0].textContent = fund
+    ? "全部同基金類型候選"
+    : "全部同產業候選";
+  $("peerScope").options[1].textContent = fund
+    ? "相同追蹤指數"
+    : "已核對業務相近公司";
   const filtered = filteredPeers();
   const pages = Math.max(1, Math.ceil(filtered.length / 10));
   peerPage = Math.min(peerPage, pages - 1);
@@ -521,6 +531,10 @@ function renderPeers() {
     link.target = "_blank";
     link.rel = "noopener";
   });
+  if (data.instrument_type === "etf") {
+    renderFundPeers(data, visible);
+    return;
+  }
   $("peerStatus").textContent =
     `截至 ${data.reference_day} · ${data.rows.length} 檔 · ${data.alignment === "common" ? "同資料集採共同期間" : "各公司採最新期間，請核對日期"} · ${data.view_mode === "historical" ? "當時平台可得" : "最新修訂重看歷史"}`;
   $("peerNotes").textContent = data.note;
@@ -572,7 +586,9 @@ function renderPeers() {
         ? utilityMoney(value.value) + " " + field.unit
         : value?.status === "stale"
           ? "資料過期"
-          : "資料不足",
+          : value?.status === "not_applicable"
+            ? "ETF 不適用"
+            : "資料不足",
     ],
     [
       business ? "同期業務相近中位數" : "同期產業大分類中位數",

@@ -41,6 +41,7 @@ test("基本資料不觸發籌碼或歷史K線；籌碼依區間查詢且不把�
       return [{ stock_id: "2409", date: "2026-11-01" }];
     return [];
   });
+  t.mock.method(FinMind.prototype, "branches", async () => []);
   const basic = await directEquity(
     "TWSE",
     "2409",

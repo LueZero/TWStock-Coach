@@ -449,7 +449,7 @@ export function extendMetrics(
       [
         "current_long_debt",
         "一年內到期長期負債",
-        ["CurrentPortionOfLongtermDebt"],
+        ["CurrentPortionOfLongtermDebt", "LongtermLiabilitiesCurrentPortion"],
       ],
       ["receivable_amount", "應收帳款及票據", receivableFields],
     ])
@@ -461,7 +461,9 @@ export function extendMetrics(
           : pick(v, ...fields),
         p,
         "元",
-        "來源期末金額；應收款合計必須具一般應收、票據及關係人各科目。",
+        key === "receivable_amount"
+          ? "來源期末金額；應收款合計必須具一般應收、票據及關係人各科目。"
+          : "來源期末金額；來源未提供明確科目時留空，不假設為零。",
         [B],
       );
     emit(

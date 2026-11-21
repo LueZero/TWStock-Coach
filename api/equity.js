@@ -10,7 +10,7 @@ export const DATASETS = {
   InsiderTransfersReport: ["申報轉讓", null],
   TaiwanStockHoldingSharesPer: [
     "股東持股分級",
-    "集保最新免費；歷史資料需 Backer／Sponsor",
+    "集保官網近一年免費；FinMind備援歷史依會員權限",
   ],
   TaiwanStockBrokerDailyConcentration: ["前15大分點淨流向", "Sponsor"],
   TaiwanStockTradingDailyReport: ["券商分點", "Sponsor"],

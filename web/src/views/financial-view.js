@@ -2,8 +2,10 @@ import { $, fmt, textCell } from "./dashboard-view.js";
 import { state } from "./../models/stock-model.js";
 import { emptyMetric, researchCard, researchNumber } from "./research-view.js";
 import { renderFinancialHistory } from "./financial-chart.js";
+import { renderFundPanel } from "./fund-view.js";
 
 let financialCategory = "profitability";
+let financialInstrumentKey = "";
 
 const financialPages = {
   statements: "monthly-revenue",
@@ -25,9 +27,19 @@ const financialStatusLabels = {
   dependency_missing: "計算條件不足",
   no_data: "未取得",
   reference: "官方入口",
+  not_applicable: "ETF 不適用公司口徑",
 };
 
 function renderFinancialResearch(data) {
+  const instrumentKey = `${state.stock.market}:${state.stock.symbol}`;
+  if (data?.instrument_type && financialInstrumentKey !== instrumentKey) {
+    financialInstrumentKey = instrumentKey;
+    if (data.instrument_type === "etf") {
+      financialCategory = "statements";
+      financialPages.statements = "dividend-policy";
+      financialPages.valuation = "etf-nav";
+    }
+  }
   financialChartState.observer?.disconnect();
   financialChartState.observer = null;
   const container = $("financialMetrics");
@@ -78,6 +90,28 @@ function renderFinancialResearch(data) {
   $("financialCategoryNote").textContent = page
     ? `${group.label} ／ ${page.label}`
     : "財務細項載入中";
+  if (["fund_nav", "fund_portfolio", "fund_quarterly"].includes(page?.kind)) {
+    $("financialSummary").textContent =
+      "公開來源按需查詢；預估淨值、盤後淨值與 PCF 適用日分開呈現。";
+    renderFundPanel(
+      container,
+      page.kind === "fund_nav"
+        ? "nav"
+        : page.kind === "fund_quarterly"
+          ? "quarterly"
+          : "portfolio",
+    );
+    return;
+  }
+  if (page?.kind === "source_per_band" || page?.kind === "source_pbr_band") {
+    $("financialSummary").textContent =
+      "歷史來源倍數換算參考帶；不當成標準EPS河流圖、合理價或買賣建議。";
+    renderFundPanel(
+      container,
+      page.kind === "source_per_band" ? "per_band" : "pbr_band",
+    );
+    return;
+  }
   if (
     !page ||
     !(
@@ -87,7 +121,11 @@ function renderFinancialResearch(data) {
     )
   ) {
     $("financialSummary").textContent =
-      "此視角尚無可用財務資料。缺資料不代表公司衰退，請核對載入狀態與歷史取得時間。";
+      data?.source_status === "updating"
+        ? "來源仍在查詢中，尚不能判定是否缺資料或權限不足。"
+        : data?.instrument_type === "etf"
+          ? "ETF 不適用公司財報口徑；配息是否可用請核對來源狀態。"
+          : "此視角尚無可用財務資料。缺資料不代表公司衰退，請核對載入狀態與歷史取得時間。";
     return;
   }
   const heading = document.createElement("div");
@@ -100,6 +138,17 @@ function renderFinancialResearch(data) {
   badge.textContent = financialStatusLabels[page.status];
   heading.append(title, badge);
   container.append(heading);
+  if (page.availability_reason && !page.requires) {
+    const reason = document.createElement("p");
+    reason.className = "utility-note";
+    reason.textContent = page.availability_reason;
+    container.append(reason);
+  }
+  if (page.status === "not_applicable") {
+    $("financialSummary").textContent =
+      "此細項使用公司財報口徑，不適用 ETF；不是目前 Token 權限不足。";
+    return;
+  }
   if (page.note) {
     const note = document.createElement("p");
     note.className = "utility-note";

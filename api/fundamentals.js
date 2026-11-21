@@ -27,6 +27,7 @@ export const DATASETS = {
   [C]: "現金流量表",
   [P]: "本益比／股價淨值比／殖利率",
   [D]: "股利政策",
+  OfficialBookValue: "官方每股參考淨值",
 };
 const definitions = JSON.parse(
   readFileSync(new URL("./financial-catalog.json", import.meta.url), "utf8"),
@@ -539,6 +540,17 @@ export function summarize(data, cutoff = taipeiDay(), withHistory = true) {
         "直接使用來源估值；零值不視為便宜，須搭配產業及成長性",
       );
   extendMetrics(income, balance, cash, items(D), metrics, items(C), items(I));
+  const officialBook = items("OfficialBookValue").at(-1);
+  if (officialBook)
+    metrics.push({
+      key: "book_value_per_share",
+      label: "官方每股參考淨值",
+      value: num(officialBook.value),
+      period: officialBook.date,
+      unit: "元／股",
+      datasets: ["OfficialBookValue"],
+      note: "官方最新季揭露，每股金額直接取來源；未用股本推算股數，也不回填歷史季度。",
+    });
   const fresh =
       revPeriod &&
       daysBetween(day, revPeriod + "-01") <= 100 &&

@@ -1,6 +1,7 @@
 import { $, svgNode } from "./dashboard-view.js";
 import { state, stockKey } from "../models/stock-model.js";
 import { openInsight } from "../controllers/research-controller.js";
+import { renderFundPanel } from "./fund-view.js";
 
 export const chipTabs = [
   ["institutional", "法人買賣"],
@@ -380,7 +381,7 @@ function tabConfiguration(w) {
       },
     ];
     config.note =
-      "最新公開轉讓日報逐次保存；揭露日期不冒充申報日，申報不代表已成交，贈與也不代表市場賣出。空白區間不表示從未申報。";
+      "使用最新公開轉讓日報，僅記憶體快取；揭露日期不冒充申報日，申報不代表已成交，贈與也不代表市場賣出。空白區間不表示從未申報。";
     config.sources = ["InsiderTransfersReport"];
   } else {
     textFilter("ETF／基金搜尋");
@@ -797,11 +798,13 @@ export function renderChipWorkspace() {
     const source = data?.coverage?.find((r) => r.dataset === key);
     const messages = {
       available: "已取得資料；仍需核對所選區間與筆數",
+      partial: "部分週別可用；失敗週別未補值",
       queued: "等候來源查詢，尚不能判定有無資料",
       not_requested: "此頁未查詢",
       outside_range: "來源有資料，但不在所選區間；最新週資料不能代替歷史週資料",
       loading: "來源查詢中，尚不能判定有無資料",
       source_error: "來源請求失敗，並非確認沒有資料",
+      not_applicable: "此商品不適用公司揭露口徑",
       permission_denied: "目前帳戶權限不足",
       invalid_token: "Token 無效或已失效",
       quota_exceeded: "來源額度或速率已達上限",
@@ -819,6 +822,12 @@ export function renderChipWorkspace() {
       ),
     );
   });
+  if (ui.tab === "fund-holdings") {
+    const section = /^00\d{2,}[A-Z]?$/i.test(state.stock.symbol)
+      ? "portfolio"
+      : "holders";
+    renderFundPanel($("chipExtra"), section);
+  }
 }
 
 export function initChipWorkspace() {

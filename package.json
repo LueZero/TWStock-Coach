@@ -31,6 +31,7 @@
     "preview": "npm run preview --workspace @twstock-coach/web",
     "test": "node --test agent/tests/*.test.js web/tests/*.test.js",
     "verify": "node scripts/verify_stack.js",
+    "audit:data": "node scripts/audit_stock_data.js",
     "verify:browser": "node scripts/verify_source_mode.cjs",
     "setup": "node scripts/setup_env.js",
     "format": "prettier --write api agent web/src web/index.html web/vite.config.js web/package.json scripts/*.js web/tests/*.test.js package.json compose.yaml",

@@ -121,7 +121,7 @@ async function refreshEquity(load = false, attempt = 0) {
     state.equityData = data;
     renderActiveResearch();
     $("basicStatus").textContent =
-      `${state.stock.name} ${state.stock.symbol} · 公司基本資料與機構研究。`;
+      `${state.stock.name} ${state.stock.symbol} · ${data.instrument_type === "etf" ? "官方基金基本資料" : "公司基本資料與機構研究"}。`;
     $("chipStatus").textContent =
       `${state.stock.name} ${state.stock.symbol} · ${data.start} 至 ${data.end} · ${historical ? "不提供歷史當時可得版本" : "來源 API／記憶體快取，無 DB"} · 盤後資料，各子頁更新頻率不同。`;
     if (response.state === "updating" && attempt < 180)

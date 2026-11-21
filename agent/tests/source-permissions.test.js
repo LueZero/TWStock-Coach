@@ -98,7 +98,23 @@ test("免費Token歷史分布被拒絕時使用TDCC最新週，申報無紀錄�
     "占集保庫存數比例%": i === 16 ? "100" : "1",
   }));
   t.mock.method(globalThis, "fetch", async (url) =>
-    Response.json(String(url).includes("tdcc.com.tw") ? levels : []),
+    Response.json(
+      String(url).includes("tdcc.com.tw")
+        ? levels
+        : String(url).includes("t187ap11_L")
+          ? [
+              {
+                公司代號: "2409",
+                資料年月: "11510",
+                出表日期: "1151119",
+                職稱: "董事",
+                姓名: "測試",
+                目前持股: "1000",
+                設質股數: "0",
+              },
+            ]
+          : [],
+    ),
   );
   t.mock.method(DailyProvider.prototype, "daily", async () => ({ bars: [] }));
   t.mock.method(FinMind.prototype, "get", async (dataset) => {
@@ -126,6 +142,12 @@ test("免費Token歷史分布被拒絕時使用TDCC最新週，申報無紀錄�
     assert.equal(distribution.source, "tdcc");
     assert.match(distribution.message, /最新免費週資料/);
     assert.equal(result.data.details.distribution.length, 17);
+    const directors = result.data.coverage.find(
+      (r) => r.dataset === "DirectorHoldingsReport",
+    );
+    assert.equal(directors.status, "available");
+    assert.equal(directors.scope, "latest_position");
+    assert.equal(directors.data_end, "2026-10-01");
     const transfers = result.data.coverage.find(
       (r) => r.dataset === "InsiderTransfersReport",
     );

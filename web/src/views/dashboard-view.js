@@ -1243,7 +1243,7 @@ function renderFinancialDetails(data, historical, params) {
   $("financialCoverage").textContent = data.coverage
     .map(
       (s) =>
-        `${s.label}：${s.status === "available" ? "來源 " + s.source + "／接收 " + localTime(s.received_at) : { queued: "等候來源查詢", loading: "來源查詢中", source_error: "來源請求失敗，稍後可重試", no_data: "來源回傳空資料" }[s.status] || "此時尚不可用"}`,
+        `${s.label}：${s.status === "available" ? "來源 " + s.source + "／接收 " + localTime(s.received_at) : { queued: "等候來源查詢", loading: "來源查詢中", source_error: "來源請求失敗，稍後可重試", no_data: "來源回傳空資料", not_applicable: "ETF不適用公司口徑", permission_denied: "帳戶權限不足", invalid_token: "Token無效", quota_exceeded: "來源額度不足", source_blocked: "來源暫時封鎖連線" }[s.status] || "此時尚不可用"}`,
     )
     .join("；");
   $("revenueRows").replaceChildren();

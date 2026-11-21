@@ -14,7 +14,17 @@ import {
 import { view as equityView, DATASETS as EQUITY } from "./equity.js";
 import { report as peerReport } from "./peers.js";
 import { getCatalog } from "./market.js";
+import { fundPeers } from "./fund-data.js";
+import { officialBookValue } from "./official-financial.js";
+import { valuationBands } from "./valuation-bands.js";
+import { tdccHistory } from "./tdcc-history.js";
 import { calculate } from "./indicators.js";
+import {
+  isEtf,
+  ETF_COMPANY_DATASETS,
+  annotateFinancialAvailability,
+  sourceObservation,
+} from "./data-availability.js";
 import {
   addDays,
   dailySourceEnd,
@@ -171,6 +181,7 @@ function datasetsResource(
           const reusable = previous?.snapshots?.find(
             (s) =>
               s.dataset === dataset &&
+              previous?.statuses?.[dataset]?.status !== "partial" &&
               Date.now() - Date.parse(s.received_at) < 1800000,
           );
           if (reusable) {
@@ -190,13 +201,43 @@ function datasetsResource(
           try {
             let data,
               source = "finmind",
-              sourceNote = null;
+              sourceNote = null,
+              sourceCoverage = null;
+            if (
+              isEtf(symbol) &&
+              ((kind === "financial" &&
+                (ETF_COMPANY_DATASETS.has(dataset) ||
+                  dataset === "OfficialBookValue")) ||
+                ["DirectorHoldingsReport", "InsiderTransfersReport"].includes(
+                  dataset,
+                ))
+            ) {
+              statuses[dataset] = {
+                status: "not_applicable",
+                message:
+                  "此資料集是公司營運／內部人揭露口徑，不適用 ETF；不是目前 Token 權限不足。",
+              };
+              return;
+            }
+            if (
+              dataset === "CompanyProfile" &&
+              isEtf(symbol) &&
+              market !== "TWSE"
+            ) {
+              errors[dataset] =
+                "上櫃 ETF 基金基本資料來源尚未接入；目前名稱來自股票目錄。";
+              statuses[dataset] = {
+                status: "not_connected",
+                message: errors[dataset],
+              };
+              return;
+            }
             if (
               ["AnalystTargetReport", "FundHoldingsReport"].includes(dataset)
             ) {
               errors[dataset] =
                 dataset === "FundHoldingsReport"
-                  ? "一般 ETF／基金持股尚未接入來源；不是目前 Token 的權限錯誤。"
+                  ? "全市場基金正式持股尚未接入；本頁另提供群益公開 PCF 補充，兩者口徑不同。"
                   : "此來源尚未接入直接查詢，不以推估值代替";
               statuses[dataset] = {
                 status: "not_connected",
@@ -215,6 +256,9 @@ function datasetsResource(
                 return;
               }
               data = await etfHoldings(provider, symbol, end, start);
+            } else if (dataset === "OfficialBookValue") {
+              data = await officialBookValue(market, symbol);
+              source = market.toLowerCase();
             } else if (dataset === "CompanyProfile") {
               data = await companyProfile(market, symbol);
               source = market.toLowerCase();
@@ -226,24 +270,70 @@ function datasetsResource(
               data = await officialOwnership(market, symbol, dataset);
               source = market.toLowerCase();
             } else if (dataset === "TaiwanStockHoldingSharesPer") {
-              if (process.env.FINMIND_TOKEN) {
-                try {
-                  data = await provider.get(dataset, {
-                    data_id: symbol,
-                    start_date: start,
-                    end_date: end,
-                  });
-                } catch (error) {
-                  if (error.code !== "SOURCE_PERMISSION") throw error;
+              try {
+                const progress = (rows, meta) => {
+                  if (!rows.length) return;
+                  let snapshot = snapshots.find((s) => s.dataset === dataset);
+                  if (!snapshot) {
+                    snapshot = {
+                      market,
+                      symbol,
+                      dataset,
+                      source: "tdcc_history",
+                      received_at: now(),
+                      revision: null,
+                      id: null,
+                    };
+                    snapshots.push(snapshot);
+                  }
+                  snapshot.data = [...rows];
+                  snapshot.observation = {
+                    ...sourceObservation(dataset, "tdcc_history", rows),
+                    ...meta,
+                  };
+                  statuses[dataset] = {
+                    status: "loading",
+                    rows: rows.length,
+                    message: `集保免費歷史已取得 ${meta.loaded_weeks}/${meta.requested_weeks} 週；其餘仍在查詢。`,
+                  };
+                };
+                const result = await tdccHistory(symbol, start, end, progress);
+                sourceCoverage = result.coverage;
+                data = result.data;
+                source = "tdcc_history";
+                sourceNote = `集保官網提供 ${result.coverage.available_start}～${result.coverage.available_end}，本區間取得 ${result.coverage.loaded_weeks}/${result.coverage.requested_weeks} 週；${result.coverage.failed_weeks.length} 週失敗、${result.coverage.skipped_weeks.length} 週因連續失敗尚未查詢，不補值。`;
+                if (!result.coverage.requested_weeks) {
+                  data = await tdccDistribution(symbol);
+                  source = "tdcc";
+                  sourceCoverage = null;
+                  sourceNote +=
+                    " 所選區間沒有官方可查週別；僅核對最新免費週資料，不回填歷史。";
+                }
+                const partial = snapshots.find((s) => s.dataset === dataset);
+                if (partial) snapshots.splice(snapshots.indexOf(partial), 1);
+              } catch {
+                const partial = snapshots.find((s) => s.dataset === dataset);
+                if (partial) snapshots.splice(snapshots.indexOf(partial), 1);
+                if (process.env.FINMIND_TOKEN) {
+                  try {
+                    data = await provider.get(dataset, {
+                      data_id: symbol,
+                      start_date: start,
+                      end_date: end,
+                    });
+                  } catch (error) {
+                    if (error.code !== "SOURCE_PERMISSION") throw error;
+                    data = await tdccDistribution(symbol);
+                    source = "tdcc";
+                    sourceNote =
+                      "官網歷史本次未取得，備援歷史權限不足，改用集保最新免費週資料；不冒充所選區間完整歷史。";
+                  }
+                } else {
                   data = await tdccDistribution(symbol);
                   source = "tdcc";
                   sourceNote =
-                    "歷史股權分布權限不足，改用集保最新免費週資料；不提供完整歷史週線。";
+                    "官網歷史本次未取得，改用集保最新免費週資料；不冒充完整歷史。";
                 }
-              } else {
-                data = await tdccDistribution(symbol);
-                source = "tdcc";
-                sourceNote = "集保最新免費週資料；不提供完整歷史週線。";
               }
             } else if (
               [
@@ -300,9 +390,19 @@ function datasetsResource(
               id: null,
               data,
               source_note: sourceNote,
+              observation: {
+                ...sourceObservation(dataset, source, data),
+                ...(sourceCoverage || {}),
+              },
             });
+            if (sourceCoverage?.failed_weeks.length)
+              errors[dataset] = sourceNote;
             statuses[dataset] = {
-              status: data.length ? "success" : "no_data",
+              status: sourceCoverage?.failed_weeks.length
+                ? "partial"
+                : data.length
+                  ? "success"
+                  : "no_data",
               rows: data.length,
               elapsed_ms: Date.now() - started,
               message:
@@ -349,9 +449,12 @@ function datasetsResource(
     {
       retryWhen: (value) =>
         Object.values(value.statuses || {}).some((s) =>
-          ["source_error", "quota_exceeded", "source_blocked"].includes(
-            s.status,
-          ),
+          [
+            "source_error",
+            "quota_exceeded",
+            "source_blocked",
+            "partial",
+          ].includes(s.status),
         ),
     },
   );
@@ -394,7 +497,7 @@ export async function directFinancial(
     };
     if (e) e.financialViews.set(cacheKey, cached);
   }
-  const result = { ...(await cached.promise) };
+  let result = { ...(await cached.promise) };
   result.storage = "memory";
   result.source_status = historical ? "historical_unavailable" : state(e);
   result.database_used = false;
@@ -406,6 +509,8 @@ export async function directFinancial(
   if (e)
     result.coverage = result.coverage.map((row) => ({
       ...row,
+      ...e.value?.snapshots?.find((s) => s.dataset === row.dataset)
+        ?.observation,
       status:
         e.value?.statuses?.[row.dataset]?.status === "success"
           ? "available"
@@ -416,6 +521,7 @@ export async function directFinancial(
     result.note +=
       " 資料仍在來源取得中，稍後可重新查詢；空值不代表公司沒有營收或獲利。";
   result.revision_history = [];
+  result = annotateFinancialAvailability(result, symbol);
   return historical
     ? {
         data: result,
@@ -457,6 +563,7 @@ export async function directEquity(
     instrument: async () => instrument,
   });
   result.storage = "memory";
+  result.instrument_type = isEtf(symbol) ? "etf" : "stock";
   result.database_used = false;
   result.source_errors = e?.value?.errors || {};
   result.source_status = historical ? "historical_unavailable" : state(e);
@@ -477,9 +584,14 @@ export async function directEquity(
     const outside =
       row.dataset !== "CompanyProfile" &&
       snapshot?.data.length &&
-      !snapshot.data.some((r) => start <= r.date && r.date <= end);
+      !snapshot.data.some((r) =>
+        row.dataset === "DirectorHoldingsReport"
+          ? r.date <= end
+          : start <= r.date && r.date <= end,
+      );
     return {
       ...row,
+      ...snapshot?.observation,
       status:
         status?.status === "success"
           ? outside
@@ -507,6 +619,52 @@ export async function directEquity(
   }
   return response;
 }
+export async function directValuationBands(market, symbol, start, end, field) {
+  const e = datasetsResource(market, symbol, "financial");
+  await e.promise;
+  const snapshot = e.value?.snapshots.find(
+    (s) => s.dataset === "TaiwanStockPER",
+  );
+  const first = addDays(start, -400),
+    earliest = addDays(taipeiDay(), -1826);
+  if (end < earliest)
+    return {
+      rows: [],
+      market,
+      symbol,
+      start,
+      end,
+      status: "outside_range",
+      source_status: "outside_range",
+      storage: "memory",
+      database_used: false,
+      note: "來源估值目前取得最近五年，所選區間早於來源範圍，未回填最新資料。",
+    };
+  const bars = await directBars(market, symbol, {
+    start: first > earliest ? first : earliest,
+    end,
+    price_basis: "raw",
+    timeframe: "1d",
+  });
+  const data = valuationBands(bars, snapshot?.data || [], field);
+  data.rows = data.rows.filter((r) => start <= r.date && r.date <= end);
+  return {
+    ...data,
+    market,
+    symbol,
+    start,
+    end,
+    status: data.rows.length
+      ? "available"
+      : e.value?.statuses?.TaiwanStockPER?.status === "success"
+        ? "calculation_unavailable"
+        : e.value?.statuses?.TaiwanStockPER?.status || "no_data",
+    source_status: e.value?.statuses?.TaiwanStockPER?.status || "no_data",
+    source_received_at: snapshot?.received_at || null,
+    storage: "memory",
+    database_used: false,
+  };
+}
 export async function directPeers(
   market,
   symbol,
@@ -517,6 +675,11 @@ export async function directPeers(
 ) {
   const all = await getCatalog(),
     historical = mode === "historical";
+  if (isEtf(symbol) && !historical) {
+    if (!all.some((i) => i.market === market && i.symbol === symbol))
+      fail("股票目錄沒有此市場與代號", 404);
+    return fundPeers(market, symbol, reference, requested);
+  }
   const readers = {
     instruments: async () => all,
     snapshots: async (datasets, receipt) =>

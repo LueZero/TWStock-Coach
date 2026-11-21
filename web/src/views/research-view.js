@@ -118,10 +118,22 @@ function researchCard(container, metric, points = []) {
     (metric.value == null ? "" : " " + (unit || ""));
   const badge = document.createElement("span");
   badge.className = "research-verdict";
-  badge.textContent = metric.assessment?.label || "資料不足";
+  badge.textContent =
+    metric.value == null && metric.availability
+      ? {
+          loading: "來源查詢中",
+          source_empty: "來源回傳空資料",
+          permission_denied: "帳戶權限不足",
+          not_applicable: "此商品不適用",
+          calculation_unavailable: "計算條件不足",
+        }[metric.availability.status] || "來源待核對"
+      : metric.assessment?.label || "資料不足";
   const note = document.createElement("p");
   note.textContent =
-    metric.assessment?.reason || metric.note || "尚未取得可驗證資料。";
+    metric.availability?.reason ||
+    metric.assessment?.reason ||
+    metric.note ||
+    "尚未取得可驗證資料。";
   const period = document.createElement("small");
   period.textContent = metric.period || "資料期間尚無法確認";
   card.append(label, value, badge, note, period);
@@ -182,6 +194,7 @@ function renderCoverage(container, coverage) {
     outside_range: "來源資料不在所選區間",
     loading: "來源查詢中",
     source_error: "來源請求失敗，可稍後重試",
+    not_applicable: "此商品不適用",
     permission_denied: "目前帳戶權限不足",
     invalid_token: "Token 無效或已失效",
     quota_exceeded: "來源額度或速率已達上限",
@@ -228,47 +241,65 @@ function renderBasic() {
         ? `${Number(text.slice(0, 3)) + 1911}-${text.slice(3, 5)}-${text.slice(5)}`
         : text || "—";
   };
-  const fields = profile
-    ? [
-        ["公司全名", profile["公司名稱"]],
-        ["股票代號", state.stock.symbol],
-        [
-          "市場",
-          state.stock.market === "TWSE" ? "上市・證交所" : "上櫃・櫃買中心",
-        ],
-        ["產業", state.stock.industry || profile["產業別"]],
-        ["成立日期", companyDate(profile["成立日期"])],
-        [
-          "上市／上櫃日期",
-          companyDate(profile["上市日期"] || profile["上櫃日期"]),
-        ],
-        [
-          "實收資本額",
-          profile["實收資本額"]
-            ? researchNumber(Number(profile["實收資本額"]), "元") + " 元"
-            : "—",
-        ],
-        ["董事長", profile["董事長"]],
-        ["公司網站", profile["網址"]],
-        ["官方出表日期", companyDate(profile["出表日期"])],
-        [
-          "公司資料接收時間",
-          localTime(
-            equity.coverage.find((s) => s.dataset === "CompanyProfile")
-              ?.received_at,
-          ),
-        ],
-      ]
-    : [
-        ["公司名稱", state.stock.name],
-        ["股票代號", state.stock.symbol],
-        ["市場", state.stock.market],
-        ["目前目錄產業", state.stock.industry],
-        [
-          "公司揭露資料",
-          "尚未取得官方公司基本資料；目前名稱與產業來自股票目錄。",
-        ],
-      ];
+  const fields =
+    profile && equity.instrument_type === "etf"
+      ? [
+          ["基金全名", profile["基金中文名稱"]],
+          ["基金代號", state.stock.symbol],
+          [
+            "市場",
+            state.stock.market === "TWSE" ? "上市・證交所" : "上櫃・櫃買中心",
+          ],
+          ["基金類型", profile["基金類型"]],
+          ["追蹤指數", profile["標的指數/追蹤指數名稱"]],
+          ["成立日期", companyDate(profile["成立日期"])],
+          ["上市日期", companyDate(profile["上市日期"])],
+          ["基金經理人", profile["基金經理人"]],
+          ["發行單位數", profile["發行單位數/轉換數"]],
+          ["保管機構", profile["保管機構"]],
+          ["官方出表日期", companyDate(profile["出表日期"])],
+        ]
+      : profile
+        ? [
+            ["公司全名", profile["公司名稱"]],
+            ["股票代號", state.stock.symbol],
+            [
+              "市場",
+              state.stock.market === "TWSE" ? "上市・證交所" : "上櫃・櫃買中心",
+            ],
+            ["產業", state.stock.industry || profile["產業別"]],
+            ["成立日期", companyDate(profile["成立日期"])],
+            [
+              "上市／上櫃日期",
+              companyDate(profile["上市日期"] || profile["上櫃日期"]),
+            ],
+            [
+              "實收資本額",
+              profile["實收資本額"]
+                ? researchNumber(Number(profile["實收資本額"]), "元") + " 元"
+                : "—",
+            ],
+            ["董事長", profile["董事長"]],
+            ["公司網站", profile["網址"]],
+            ["官方出表日期", companyDate(profile["出表日期"])],
+            [
+              "公司資料接收時間",
+              localTime(
+                equity.coverage.find((s) => s.dataset === "CompanyProfile")
+                  ?.received_at,
+              ),
+            ],
+          ]
+        : [
+            ["公司名稱", state.stock.name],
+            ["股票代號", state.stock.symbol],
+            ["市場", state.stock.market],
+            ["目前目錄產業", state.stock.industry],
+            [
+              "公司揭露資料",
+              "尚未取得官方公司基本資料；目前名稱與產業來自股票目錄。",
+            ],
+          ];
   fields.forEach(([label, value]) => {
     const item = document.createElement("div"),
       name = document.createElement("span"),

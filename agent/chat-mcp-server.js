@@ -17,14 +17,15 @@ const tools = createAssistantTools(context, {
     }),
 });
 const server = new Server(
-  { name: "twstock-chat", version: "1.0.0" },
+  { name: "twstock-chat", version: "1.1.0" },
   { capabilities: { tools: {} } },
 );
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: assistantToolDefinitions.map((t) => ({
     ...t,
     annotations: {
-      readOnlyHint: true,
+      readOnlyHint: t.name !== "save_research_report",
+      idempotentHint: t.name !== "save_research_report",
       destructiveHint: false,
       openWorldHint: false,
     },

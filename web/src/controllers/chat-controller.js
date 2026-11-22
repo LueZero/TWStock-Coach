@@ -161,7 +161,7 @@ function render(force = false) {
     atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 180;
   $("chatTitle").textContent = session?.title || "開始一段股票研究";
   $("chatScope").textContent = session
-    ? `${(session.targets || (session.stock ? [session.stock] : [])).map((s) => `${s.name} ${s.symbol}`).join("、") || "依描述辨識股票，可比較多檔或詢問大盤"} · ${session.mode === "historical" ? "歷史截止 " + new Date(session.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" }) : "最新資料 · 各標的分別保留截止"}`
+    ? `${(session.targets || (session.stock ? [session.stock] : [])).map((s) => `${s.name} ${s.symbol}`).join("、") || "依描述辨識股票，可比較多檔或詢問大盤"} · ${session.mode === "historical" ? "歷史價格截止 " + new Date(session.as_of).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" }) : "來源API · 按問題查詢，各資料日分開"}`
     : "每段 Session 獨立保存，可隨時回來接著問。";
   renderConversation(session, openArtifact, ask);
   renderActivity();

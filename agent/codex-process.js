@@ -118,7 +118,7 @@ export async function runCodexProcess({
               event.item?.type,
             )
           ) {
-            finish(Error("看盤助手只允許平台資料工具"));
+            finish(Error("股票助手只允許平台資料工具"));
             return;
           }
           if (

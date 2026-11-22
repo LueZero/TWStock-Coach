@@ -114,6 +114,10 @@ const labels = {
   screen_market_stocks: "全市場價量篩選",
   search_stocks: "股票目錄",
   get_market_data: "大盤市場",
+  get_market_chart: "大盤與期貨走勢",
+  get_fund_data: "ETF淨值與基金組合",
+  get_valuation_bands: "估值參考帶",
+  run_strategy_backtest: "策略回放",
   get_stock_quote: "個股行情與五檔",
   get_stock_data: "平台資料",
   get_financial_history: "歷年財務",
@@ -140,23 +144,36 @@ export function renderSources(turn) {
   if (!calls.length) return null;
   const details = el("details", null, "chat-sources");
   details.append(
-    el(
-      "summary",
-      `本次查詢依據 · ${calls.length} 項 · ${new Set(calls.filter((c) => c.symbol).map((c) => `${c.market}:${c.symbol}`)).size > 1 ? "各標的時間分別列示" : "截止 " + stamp(calls.find((c) => c.as_of)?.as_of || turn.scope?.as_of)}`,
-    ),
+    el("summary", `本次查詢依據 · ${calls.length} 項 · 各來源資料日分別列示`),
   );
   for (const call of calls) {
+    const sourceState =
+      call.data?.source_status ||
+      call.data?.source_state ||
+      call.data?.state ||
+      call.data?.status;
+    const sourceLabel = {
+      updating: "來源載入中",
+      partial: "部分資料可用",
+      unavailable: "來源暫不可用",
+      historical_unavailable: "無歷史時點快照",
+      outside_range: "資料在區間外",
+      no_data: "來源未回傳資料",
+      permission_denied: "權限不足",
+      invalid_token: "金鑰無效",
+      quota_exceeded: "來源額度不足",
+    }[sourceState];
     const item = el("details");
     item.append(
       el(
         "summary",
-        `${call.target ? `${call.target.name} ${call.target.symbol} · ` : ""}${labels[call.name] || call.name}${call.arguments?.section ? " · " + (sectionLabels[call.arguments.section] || call.arguments.section) : ""} · ${call.status === "completed" ? "查詢完成" : "查詢失敗"}`,
+        `${call.target ? `${call.target.name} ${call.target.symbol} · ` : ""}${labels[call.name] || call.name}${call.arguments?.section ? " · " + (sectionLabels[call.arguments.section] || call.arguments.section) : ""} · ${call.status === "completed" ? sourceLabel || "查詢完成" : "查詢失敗"}`,
       ),
     );
     item.append(
       el(
         "p",
-        `${call.as_of ? "查詢截止 " + stamp(call.as_of) + " · " : ""}${call.evidence_id || call.error || ""}`,
+        `${call.queried_at || call.as_of ? "查詢時間 " + stamp(call.queried_at || call.as_of) + " · " : ""}${call.evidence_id || call.error || ""}`,
       ),
     );
     item.addEventListener("toggle", () => {

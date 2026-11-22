@@ -24,6 +24,7 @@
     "assistant:start": "node agent/index.js",
     "assistant:setup": "node scripts/setup_assistant.js",
     "verify:assistant": "node scripts/verify_assistant_api.js",
+    "verify:assistant-tools": "node scripts/verify_assistant_tools.js",
     "verify:assistant-browser": "node scripts/verify_assistant_browser.cjs",
     "start": "node api/index.js",
     "dev": "npm run dev --workspace @twstock-coach/web",

@@ -101,6 +101,24 @@ export const assistantToolDefinitions = [
     },
   },
   {
+    name: "get_market_chart",
+    description:
+      "查大盤加權指數或台指期日／夜盤走勢，不需個股。history為歷史價格區間而非當時可得快照；期貨歷史須明傳YYYYMM契約，盤中須先查get_market_data取得確切symbol，不拼接連續契約。",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        product: { type: "string", enum: ["index", "day", "night"] },
+        mode: { type: "string", enum: ["history", "intraday"] },
+        start: { type: "string", maxLength: 10 },
+        end: { type: "string", maxLength: 10 },
+        contract: { type: "string", maxLength: 6 },
+        symbol: { type: "string", maxLength: 16 },
+      },
+      required: ["product", "mode"],
+    },
+  },
+  {
     name: "get_market_data",
     description:
       "不選個股即可查最新加權指數、台指期日／夜盤與市場籌碼，逐項核對資料日期。此獨立入口目前不提供嚴格歷史截止快照。",
@@ -334,6 +352,63 @@ export function createAssistantTools(
         category: "market",
         scope: { ...baseScope(), as_of },
         as_of,
+        data,
+      };
+      await record(result);
+      return result;
+    }
+    if (name === "get_market_chart") {
+      if (
+        !["index", "day", "night"].includes(args.product) ||
+        !["history", "intraday"].includes(args.mode)
+      )
+        throw Error("市場商品或走勢模式不符");
+      if (args.mode === "intraday") {
+        if (context.scope.mode === "historical")
+          throw Error("歷史模式不提供當時盤中快照");
+        if (args.start || args.end || args.contract)
+          throw Error("盤中模式不接受歷史期間與月份");
+        if (
+          args.product !== "index" &&
+          !new RegExp(
+            "^TXF[A-L]\\d-" + (args.product === "night" ? "M" : "F") + "$",
+          ).test(args.symbol || "")
+        )
+          throw Error("請先查大盤取得盤別相符的期貨symbol");
+      } else {
+        const valid = (value) =>
+          typeof value === "string" &&
+          /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+          Number.isFinite(Date.parse(value)) &&
+          new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
+        if (
+          !valid(args.start) ||
+          !valid(args.end) ||
+          args.start > args.end ||
+          args.end > context.scope.end ||
+          Date.parse(args.end) - Date.parse(args.start) > 366 * 86400000
+        )
+          throw Error("市場歷史區間需有效、不超過本次截止且最多一年");
+        if (
+          args.symbol ||
+          (args.product !== "index" &&
+            !/^\d{4}(0[1-9]|1[0-2])$/.test(args.contract || ""))
+        )
+          throw Error("期貨歷史需明傳有效YYYYMM契約，不使用盤中symbol");
+      }
+      const data = await request(
+        `/api/market/board/chart?${new URLSearchParams(args)}`,
+      );
+      const result = {
+        name,
+        arguments: args,
+        status: "completed",
+        category: "market",
+        evidence_id: evidenceId({ args, data }),
+        scope: baseScope(),
+        queried_at: new Date().toISOString(),
+        database_used: false,
+        point_in_time: false,
         data,
       };
       await record(result);

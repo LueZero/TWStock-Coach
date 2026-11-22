@@ -40,36 +40,23 @@ function harness() {
               s.name.includes(u.searchParams.get("q")),
           ),
         );
-      if (u.pathname === "/api/research/report-input") {
-        const body = JSON.parse(options.body),
-          symbol = body.symbol,
+      if (u.pathname.startsWith("/api/chart/")) {
+        const symbol = u.pathname.split("/").at(-1),
           price = symbol === "2330" ? 1100 : 55;
         return Response.json({
-          report: {
-            meta: { asset: "stock", symbol },
-            evidence: [
-              { id: "price:last", category: "technical", value: price },
-            ],
-            metrics: { ma20: price },
-            scenarios: [],
-            observations: [],
-            chart_annotations: [],
-          },
-          input: {
-            bars: [
-              {
-                trade_date: "2026-10-16",
-                open: price,
-                high: price,
-                low: price,
-                close: price,
-                volume: 1000,
-                is_final: true,
-              },
-            ],
-            quality: [],
-            facets: [],
-          },
+          source_state: "ready",
+          data: [
+            {
+              trade_date: "2026-10-16",
+              timestamp: "2026-10-16T05:30:00Z",
+              open: price,
+              high: price,
+              low: price,
+              close: price,
+              volume: 1000,
+              is_final: true,
+            },
+          ],
         });
       }
       throw Error("不應查詢此路由 " + u.pathname);
@@ -80,8 +67,8 @@ function harness() {
 test("技能可按需讀取並保留版本，不執行行情或允許任意路徑", async () => {
   const { tools, calls, requests } = harness();
   const skills = await skillCatalogue();
-  assert.equal(skills.length, 4);
-  assert.equal(new Set(skills.map((s) => s.name)).size, 4);
+  assert.equal(skills.length, 6);
+  assert.equal(new Set(skills.map((s) => s.name)).size, 6);
   const skill = await tools.call("read_research_skill", {
     name: "twstock-compare",
   });

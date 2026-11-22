@@ -1,6 +1,6 @@
 # 架構設計
 
-更新：2026-11-21。套件版本 1.2.0。功能細節見 [功能設計](FEATURES.md)。
+更新：2026-11-22。套件版本 1.2.0。功能細節見 [功能設計](FEATURES.md)。
 
 ## 現行架構
 
@@ -20,46 +20,81 @@ flowchart LR
 
 ## 八個個股區塊的資料路徑
 
-| 區塊 | 平台資料接口 | 來源與處理 |
-| --- | --- | --- |
-| 看盤工作台 | `/api/quote`、`/api/stock-data?section=chart` | 公開行情／五檔、來源 K 線、聚合與均線 |
-| 技術指標 | 共用 K 線接口、`/api/strategy/analyze` | 完成 K 線、技術指標與事件；歷史行情展開顯示 |
-| 基本分析 | `/api/stock-data?section=basic` | 官方公司基本資料；未接入的機構研究明示限制 |
-| 財務分析 | `/api/stock-data?section=financial`、`/api/valuation-bands` | FinMind 六份資料及官方每股參考淨值；平台比率與來源倍數參考帶 |
-| 籌碼分析 | `/api/stock-data?section=equity` | 法人、融資券、股權、官方申報及有權限的分點資料 |
-| 策略回放 | `/api/strategy/backtest` | 來源歷史 K 線及平台策略計算，不保存回測到 DB |
-| 同業比較 | `/api/peers`、財務資料接口 | API 股票目錄與已取得財務資料，按需補齊可見頁面 |
-| 熱門新聞 | `/api/media` | 近期 RSS 與逐日公司新聞索引分開載入 |
+| 區塊       | 平台資料接口                                                | 來源與處理                                                   |
+| ---------- | ----------------------------------------------------------- | ------------------------------------------------------------ |
+| 看盤工作台 | `/api/quote`、`/api/stock-data?section=chart`               | 公開行情／五檔、來源 K 線、聚合與均線                        |
+| 技術指標   | 共用 K 線接口、`/api/strategy/analyze`                      | 完成 K 線、技術指標與事件；歷史行情展開顯示                  |
+| 基本分析   | `/api/stock-data?section=basic`                             | 官方公司基本資料；未接入的機構研究明示限制                   |
+| 財務分析   | `/api/stock-data?section=financial`、`/api/valuation-bands` | FinMind 六份資料及官方每股參考淨值；平台比率與來源倍數參考帶 |
+| 籌碼分析   | `/api/stock-data?section=equity`                            | 法人、融資券、股權、官方申報及有權限的分點資料               |
+| 策略回放   | `/api/strategy/backtest`                                    | 來源歷史 K 線及平台策略計算，不保存回測到 DB                 |
+| 同業比較   | `/api/peers`、財務資料接口                                  | API 股票目錄與已取得財務資料，按需補齊可見頁面               |
+| 熱門新聞   | `/api/media`                                                | 近期 RSS 與逐日公司新聞索引分開載入                          |
 
 API 返回 `ready`、`updating`、`partial`、`unavailable`。前端切換區塊先顯示畫面與現有資料，來源工作按需啟動；離開區塊停止前端輪詢與下一批補齊。已發送的共享來源請求可能繼續完成，供其他使用者或稍後返回使用。
 
 ## 後端模組
 
-| 模組 | 責任 |
-| --- | --- |
-| `api/api.js`、`contracts.js` | HTTP 接口、參數驗證、OpenAPI 與錯誤處理 |
-| `api/bar-validation.js` | 純 K 線格式、時間、價格與股數驗證 |
-| `api/direct-data.js` | 股票來源資源、財務／籌碼讀取器及同業組裝 |
-| `api/daily-provider.js`、`providers.js` | 區間行情、官方月報備援與 FinMind 連線 |
-| `api/source-cache.js` | 有界記憶體快取、同請求合併、失敗冷卻 |
-| `api/data-availability.js` | 財務缺項原因、ETF 適用性與來源筆數／日期／範圍標記，不將計算條件不足混為權限問題 |
-| `api/fund-data.js` | TWSE ETF 預估／歷史淨值、同類比較、群益 PCF 組合與有限範圍反查 |
-| `api/tdcc-history.js` | 集保官方週別與正常表單會話、完整級距及合計驗證、漸進載入、有界快取與重疊請求合併 |
-| `api/cathay-funds.js` | 國泰完整目錄、日組合與獨立的季度權重揭露；不推算缺失股數及代號 |
-| `api/official-financial.js` | 官方最新季每股參考淨值，不以股本反推股數 |
-| `api/valuation-bands.js` | 同日原始收盤價與來源倍數換算，歷史分位不讀未來值；非重算基本面估值 |
-| `api/source-queue.js`、`source-budget.js` | 前景優先、來源間隔與滾動一小時預算 |
-| `api/source-errors.js` | 固定安全訊息，不洩露原始錯誤文字或憑證 |
-| `api/market.js`、`trading.js` | 股票目錄、行情快照與交易日曆 |
-| `api/charting.js`、`indicators.js`、`technical-events.js` | K 線聚合、技術計算與事件 |
-| `api/fundamentals.js`、`financial-metrics.js` | 純財務整理、比率及歷史計算 |
-| `api/equity.js`、`chip-workspace.js`、`ownership-provider.js` | 籌碼計算及官方揭露 |
-| `api/peers.js`、`media.js` | 同業比較與新聞資料 |
-| `api/strategy.js`、`research.js` | 策略回放與既有研究計算 |
-| `api/market-board.js`、`market-chips.js` | 大盤、期貨日夜盤與市場籌碼 |
-| `api/direct-research.js`、`research-packet.js` | 既有研究接口相容，僅接受明確來源讀取器 |
+| 模組                                                          | 責任                                                                             |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `api/api.js`、`contracts.js`                                  | HTTP 接口、參數驗證、OpenAPI 與錯誤處理                                          |
+| `api/bar-validation.js`                                       | 純 K 線格式、時間、價格與股數驗證                                                |
+| `api/direct-data.js`                                          | 股票來源資源、財務／籌碼讀取器及同業組裝                                         |
+| `api/daily-provider.js`、`providers.js`                       | 區間行情、官方月報備援與 FinMind 連線                                            |
+| `api/source-cache.js`                                         | 有界記憶體快取、同請求合併、失敗冷卻                                             |
+| `api/data-availability.js`                                    | 財務缺項原因、ETF 適用性與來源筆數／日期／範圍標記，不將計算條件不足混為權限問題 |
+| `api/fund-data.js`                                            | TWSE ETF 預估／歷史淨值、同類比較、群益 PCF 組合與有限範圍反查                   |
+| `api/tdcc-history.js`                                         | 集保官方週別與正常表單會話、完整級距及合計驗證、漸進載入、有界快取與重疊請求合併 |
+| `api/cathay-funds.js`                                         | 國泰完整目錄、日組合與獨立的季度權重揭露；不推算缺失股數及代號                   |
+| `api/official-financial.js`                                   | 官方最新季每股參考淨值，不以股本反推股數                                         |
+| `api/valuation-bands.js`                                      | 同日原始收盤價與來源倍數換算，歷史分位不讀未來值；非重算基本面估值               |
+| `api/source-queue.js`、`source-budget.js`                     | 前景優先、來源間隔與滾動一小時預算                                               |
+| `api/source-errors.js`                                        | 固定安全訊息，不洩露原始錯誤文字或憑證                                           |
+| `api/market.js`、`trading.js`                                 | 股票目錄、行情快照與交易日曆                                                     |
+| `api/charting.js`、`indicators.js`、`technical-events.js`     | K 線聚合、技術計算與事件                                                         |
+| `api/fundamentals.js`、`financial-metrics.js`                 | 純財務整理、比率及歷史計算                                                       |
+| `api/equity.js`、`chip-workspace.js`、`ownership-provider.js` | 籌碼計算及官方揭露                                                               |
+| `api/peers.js`、`media.js`                                    | 同業比較與新聞資料                                                               |
+| `api/strategy.js`、`research.js`                              | 策略回放與既有研究計算                                                           |
+| `api/market-board.js`、`market-chips.js`                      | 大盤、期貨日夜盤與市場籌碼                                                       |
+| `api/direct-research.js`、`research-packet.js`                | 既有研究接口相容，僅接受明確來源讀取器                                           |
 
-財務、籌碼、同業及研究組裝不含 SQL 備援。缺少必要來源讀取器時立即回報設定錯誤，不嘗試連線資料庫。Agent 的工具定義、技能與對話流程留待下一階段調整，本次保留既有接口相容。
+財務、籌碼、同業及研究組裝不含 SQL 備援。缺少必要來源讀取器時立即回報設定錯誤，不嘗試連線資料庫。既有研究接口保留相容，但股票助手 Chat 已改走下列按需來源工具。
+
+## 股票助手：代理人、技能與工具
+
+本機 Node.js Agent 為獨立服務，使用 Codex CLI 的 ChatGPT 訂閱登入與原生 agent loop；平台不另建模型迴圈、不使用模型 API Key、不放入 Compose。每個 Session 對應自己的原生 thread，可依使用者描述換股、跨股或詢問大盤。
+
+```mermaid
+flowchart LR
+  Chat[使用者對話／SSE] --> Bridge[本機 Agent]
+  Bridge --> Codex[Codex 原生 Session 與 agent loop]
+  Codex --> Skills[按需讀取研究技能]
+  Codex --> MCP[stock MCP 工具]
+  MCP --> SourceTools[按標的與問題選 API]
+  SourceTools --> API[看盤來源 API／記憶體快取]
+  MCP --> Math[確定性試算]
+  MCP --> Artifacts[真實 K 線／引用報告]
+  Artifacts --> Sessions[Session 檔案保存]
+```
+
+| 層級           | 責任與檔案                                                                                           |
+| -------------- | ---------------------------------------------------------------------------------------------------- |
+| 代理人規則     | `agent/AGENTS.md`：標的隔離、時效、引用、缺項與工具邊界，不放固定股票結論                            |
+| 研究技能       | `agent/skills` 六類：查證、技術、財務／籌碼／ETF、回測、比較、持倉；目錄先提供，內容按需讀取         |
+| Session 與 CLI | `chat-adapter.js`、`codex-process.js`：原生 thread 接續、取消、活動及文字串流                        |
+| MCP 路由       | `chat-mcp-server.js`、`assistant-tools.js`：限制可用工具、核對目錄、市場與字串代號，多股分開記錄     |
+| 來源查詢       | `source-tools.js`、`chat-tools.js`：直接呼叫看盤 API、參數與日期驗證、分頁、有限快取、圖表與報告引用 |
+| 確定性計算     | 既有 `trade-math.js` 及 API 指標／回放：用真實資料計算，不由模型重寫公式                             |
+| 驗證腳本       | `verify_assistant_tools.js` 不呼叫模型；`verify_assistant_api.js` 執行真實 Codex／Session 驗證       |
+
+Chat 不呼叫 `/api/research/report-input` 或 `/api/research/refresh`，不因單一查詢預取全部面向。舊 `tools.js` 的整包報告執行路徑不屬於 Chat；來源工具只共用既有基礎工具欄位定義，其他既有研究模組維持相容。
+
+財務、籌碼不傳會導致空歷史快照的 `as_of`；資料回傳 `point_in_time=false`，各來源實際日期分開。嚴格歷史模式只允許可核對的價格／模擬研究，不把最新基本面、持股或新聞冒充當時已知。新版前台仍停用建立歷史快照 Session，舊 Session 保留限制回覆。
+
+來源仍在取得時不快取成永久空結果；下次工具查詢可取得新進度。新聞預設近七日，明傳範圍最多 31 日，透過 `cursor` 接續來源 `next_cursor`。同業依已接來源記憶體組裝，讀取候選財務後重新比較，不凍結載入前的空結果。API 來源仍依既有節流與快取運作，不為助手另建資料儲存層。
+
+MCP 只允許已定義的平台資料、計算與產物工具，不接受任意網址或命令。保存報告要求本輪成功工具證據，保留既有價位／金額檢核；技能、搜尋結果與舊對話不能當成新行情證據。圖表僅使用真實完成日 K。工具錯誤可在原生迴圈中補查，不將每次對話強制變成報告。
 
 ## 快取、排隊與效能
 

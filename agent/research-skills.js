@@ -7,6 +7,8 @@ const names = [
   "twstock-technical",
   "twstock-compare",
   "twstock-position",
+  "twstock-fundamental",
+  "twstock-backtest",
 ];
 export async function researchSkills() {
   return Promise.all(

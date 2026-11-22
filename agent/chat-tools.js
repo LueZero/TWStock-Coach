@@ -1,15 +1,16 @@
 import { randomUUID, createHash } from "node:crypto";
-import { createStockTools, toolDefinitions } from "./tools.js";
+import { createSourceTools, sourceToolDefinitions } from "./source-tools.js";
 import { EVENT_VERSION } from "../api/technical-events.js";
 import { validateExplanation } from "./report-schema.js";
 import { validationReport } from "./report-validation.js";
+import { isEtf } from "../api/data-availability.js";
 
 export const chatToolDefinitions = [
-  ...toolDefinitions,
+  ...sourceToolDefinitions,
   {
     name: "get_stock_quote",
     description:
-      "查詢本次固定截止前平台已接收的個股公開行情與五檔快照，含行情／接收時間。不是逐筆即時或收盤訊號；休市／延遲與無資料依日期判斷。",
+      "直接查目前公開報價與五檔，核對行情／接收時間及來源狀態。不是逐筆即時、完成收盤訊號或歷史當時快照；歷史模式不提供。",
     inputSchema: {
       type: "object",
       properties: {},
@@ -24,6 +25,7 @@ export const chatToolDefinitions = [
       type: "object",
       properties: {
         start: { type: "string", maxLength: 10 },
+        end: { type: "string", maxLength: 10 },
         focus_date: { type: "string", maxLength: 10 },
       },
       additionalProperties: false,
@@ -64,34 +66,7 @@ export function createChatTools(
   };
   async function tools() {
     return (toolsPromise ||= (async () => {
-      if (context.scope.mode === "latest") {
-        const response = await fetcher(
-          new URL(
-            `/api/research/refresh/${context.scope.market}/${context.scope.symbol}`,
-            context.api_url,
-          ),
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-            signal: AbortSignal.any([
-              AbortSignal.timeout(40000),
-              ...(signal ? [signal] : []),
-            ]),
-          },
-        );
-        if (!response.ok) throw Error("行情更新失敗，請稍後再試");
-        const refresh = await response.json();
-        context.scope.as_of = new Date().toISOString();
-        context.scope.end = new Intl.DateTimeFormat("en-CA", {
-          timeZone: "Asia/Taipei",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }).format(new Date(context.scope.as_of));
-        context.latest_refresh = refresh;
-      }
-      return createStockTools(context, { fetcher, signal, onCall: record });
+      return createSourceTools(context, { fetcher, signal, onCall: record });
     })());
   }
   async function call(
@@ -99,7 +74,7 @@ export function createChatTools(
     args = {},
     calculationMessage = context.user_message || "",
   ) {
-    if (toolDefinitions.some((t) => t.name === name))
+    if (sourceToolDefinitions.some((t) => t.name === name))
       return (await tools()).call(name, args, calculationMessage);
     const definition = chatToolDefinitions.find((t) => t.name === name);
     if (
@@ -112,10 +87,7 @@ export function createChatTools(
     )
       throw Error("工具參數不符");
     if (name === "get_stock_quote") {
-      const snapshot = await (await tools()).snapshot();
-      const quote = snapshot.report.evidence.find(
-        (e) => e.id === "quote:snapshot",
-      );
+      const quote = await (await tools()).quote();
       const id =
         "tool:" +
         createHash("sha256")
@@ -124,19 +96,35 @@ export function createChatTools(
           .slice(0, 20);
       const result = {
         evidence_id: id,
-        evidence: quote
-          ? [{ ...quote, original_id: quote.id, id: `${id}:${quote.id}` }]
-          : [],
+        evidence: [
+          {
+            id: `${id}:quote:snapshot`,
+            original_id: "quote:snapshot",
+            asset: isEtf(context.scope.symbol) ? "etf" : "stock",
+            rows: [quote],
+            source_time: quote.source_time,
+            received_at: quote.received_at,
+          },
+        ],
         ...context.scope,
+        queried_at: new Date().toISOString(),
+        database_used: false,
+        point_in_time: false,
         data: {
-          meta: { asset: snapshot.report.meta?.asset },
-          quote: quote?.rows?.[0] || null,
-          source_time: quote?.source_time || null,
-          received_at: quote?.received_at || null,
-          note: "公開行情及瞬間五檔觀察快照，非完整逐筆，不能拿來確認完成日K訊號。",
+          meta: { asset: isEtf(context.scope.symbol) ? "etf" : "stock" },
+          quote,
+          source_time: quote.source_time,
+          received_at: quote.received_at,
+          note: "來源公開快照，非完整逐筆或歷史截止快照。",
         },
       };
-      await record({ name, arguments: {}, status: "completed", ...result });
+      await record({
+        name,
+        arguments: {},
+        status: "completed",
+        category: "quote",
+        ...result,
+      });
       return result;
     }
     if (name === "save_research_report") {
@@ -212,6 +200,7 @@ export function createChatTools(
       section: "technical",
       limit: 120,
       ...(args.start ? { start: args.start } : {}),
+      ...(args.end ? { end: args.end } : {}),
     });
     while (
       args.focus_date &&
@@ -226,6 +215,7 @@ export function createChatTools(
         limit: 120,
         offset: source.data.bars.offset + source.data.bars.limit,
         ...(args.start ? { start: args.start } : {}),
+        ...(args.end ? { end: args.end } : {}),
       });
     }
     const bars = source.data.bars.rows;
@@ -240,7 +230,7 @@ export function createChatTools(
       focus_date: args.focus_date || null,
       evidence_ids: [source.evidence_id],
       technical_event_version: EVENT_VERSION,
-      scope: { ...context.scope, start: source.start },
+      scope: { ...context.scope, start: source.start, end: source.end },
       created_at: new Date().toISOString(),
       note: `完成日K、原始價格；顯示${bars.length}／${source.data.bars.total}根，可用start調整研究區間。`,
     };

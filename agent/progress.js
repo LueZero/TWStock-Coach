@@ -44,7 +44,11 @@ export function cliActivity(event) {
           read_research_skill: `載入研究技能 ${args.name || ""}`,
           list_research_skills: "研究技能清單",
           get_market_data: "大盤市場資訊",
+          get_market_chart: "加權指數與期貨走勢",
           screen_market_stocks: "全市場價量排行與條件篩選",
+          get_fund_data: "ETF淨值、公開組合與基金持股",
+          get_valuation_bands: "來源估值參考帶",
+          run_strategy_backtest: "策略歷史回放",
         }[event.item.tool] ||
         {
           show_stock_chart: "日K與技術訊號圖",

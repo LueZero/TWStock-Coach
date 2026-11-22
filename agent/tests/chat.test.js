@@ -165,7 +165,7 @@ test("Chat工具按需查資料，報告不能用舊證據、編造金額，圖�
     scope: {
       market: "TWSE",
       symbol: "2883",
-      mode: "historical",
+      mode: "latest",
       as_of: "2026-10-17T00:00:00Z",
       start: "2026-10-01",
       end: "2026-10-16",
@@ -211,9 +211,20 @@ test("Chat工具按需查資料，報告不能用舊證據、編造金額，圖�
     },
   };
   const tools = createChatTools(context, {
-    fetcher: () => {
+    fetcher: (url) => {
       requests++;
-      throw Error("不應查網路");
+      if (new URL(url).pathname.startsWith("/api/quote/"))
+        return Response.json({
+          ...context.snapshot.report.evidence[0].rows[0],
+          source_time: "2026-10-16T05:30:00Z",
+          received_at: "2026-10-16T05:30:01Z",
+        });
+      if (new URL(url).pathname.startsWith("/api/chart/"))
+        return Response.json({
+          data: context.snapshot.input.bars,
+          source_state: "ready",
+        });
+      throw Error("不應查舊報告或DB路由");
     },
     onCall: (c) => calls.push(c),
   });
@@ -251,7 +262,7 @@ test("Chat工具按需查資料，報告不能用舊證據、編造金額，圖�
     evidence_ids: [source],
   });
   assert.ok(saved.displayed);
-  assert.equal(requests, 0);
+  assert.equal(requests, 2);
 });
 
 test("使用者明示成本可試算且不升格為平台委託價，獲利願望不能當成本", () => {

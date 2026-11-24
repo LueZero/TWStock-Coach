@@ -54,7 +54,7 @@ flowchart LR
 | 新聞與公開討論     | FinMind／RSS／公開文章，非完整新聞歷史庫                                                     |
 | 技術指標           | 平台以實際 K 線計算，不由語言模型編造                                                        |
 
-前端主要資料入口為 `GET /api/stock-data/:market/:symbol?section=chart|basic|financial|equity`，回傳 `data`、`state`、`storage: memory`、`database_used: false`。冷啟動可能先回傳 `updating`，前端重新查同一資料入口；不操作工作 ID。八個區塊的來源與計算路徑列於[架構設計](docs/DESIGN.md#八個個股區塊的資料路徑)。
+前端主要資料入口為 `GET /api/stock-data/:market/:symbol?section=chart|basic|financial|equity`，回傳 `data`、`state`、`storage: memory`、`database_used: false`。冷啟動可能先回傳 `updating`，前端重新查同一資料入口；不操作工作 ID。八個區塊的來源與計算路徑列於[功能設計](docs/FEATURES.md#個股看盤資料入口)。
 
 **記憶體快取會在服務重啟後消失。** 沒有資料庫修訂歷史，因此無法重建「某一天當時已公告／當時平台已取得」的財務與籌碼版本；歷史價格區間回看仍可使用來源歷史資料。財報期間不等於公告日期。
 
@@ -90,6 +90,8 @@ npm run assistant:start
 使用 ChatGPT 訂閱登入。前端將 `/api/assistant` 代理到 Agent 的 `8010`，其他股票 API 送至 `8000`。
 
 每個 Session 獨立保存；Codex 使用原生 agent loop 與指定 thread 接續，依問題透過 MCP 直接查各看盤 API，不先載入整包報告，也不讀股票 DB。技能位於 `agent/skills`，分為查證、技術、財務／籌碼／ETF、策略回放、比較與持倉六類，提供方法而非固定答案。另有基金資料、估值參考帶與大盤走勢工具；來源載入中、權限不足與無資料分開呈現。文字與活動以 SSE 顯示，不提供內部推理或保證逐 Token。
+
+助手能力說明：[17 項完整工具](docs/FEATURES.md#完整工具清單)、[六種研究方法](docs/FEATURES.md#六種研究技能與分析方法)、[分析流程](docs/FEATURES.md#一次提問如何形成分析)、[提問範例](docs/FEATURES.md#可以怎麼問)。工具與 API 的實作對照見[功能文件](docs/FEATURES.md#助手工具與-api-對照)。
 
 對話與研究內容保存在 `sessions/`；舊 `reports/` 為檔案封存。這些檔案不屬於股票 DB。來源模式沒有可還原的歷史 DB 快照，助手的歷史研究能力受到同樣限制。
 

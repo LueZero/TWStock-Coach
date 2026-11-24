@@ -3,6 +3,7 @@ import { createChatTools, chatToolDefinitions } from "./chat-tools.js";
 import { readResearchSkill, skillCatalogue } from "./research-skills.js";
 import { validateExplanation } from "./report-schema.js";
 import { validationReport } from "./report-validation.js";
+import { createStockApiClient } from "./stock-api-client.js";
 
 const reportDefinition = chatToolDefinitions.find(
   (t) => t.name === "save_research_report",
@@ -35,6 +36,16 @@ const targetDefinitions = chatToolDefinitions
     },
   }));
 export const assistantToolDefinitions = [
+  {
+    name: "get_stock_service_status",
+    description:
+      "檢查股票API是否啟動及可連線，與Codex訂閱登入分開。連線失敗時先診斷，不連續重試不同股票工具；這不是行情證據。",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
   {
     name: "screen_market_stocks",
     description:
@@ -142,6 +153,7 @@ export function createAssistantTools(
   const calls = [],
     targets = new Map(),
     catalogue = new Map();
+  const client = createStockApiClient(context.api_url, { fetcher, signal });
   const baseScope = () => ({
     mode: context.scope.mode,
     as_of: context.scope.as_of,
@@ -154,15 +166,7 @@ export function createAssistantTools(
     await onCall(event);
   };
   async function request(path) {
-    const response = await fetcher(new URL(path, context.api_url), {
-      signal: AbortSignal.any([
-        AbortSignal.timeout(45000),
-        ...(signal ? [signal] : []),
-      ]),
-      redirect: "error",
-    });
-    if (!response.ok) throw Error(`平台查詢失敗（HTTP ${response.status}）`);
-    return response.json();
+    return client.request(path);
   }
   async function search(query) {
     const rows = await request(`/api/search?q=${encodeURIComponent(query)}`);
@@ -246,6 +250,7 @@ export function createAssistantTools(
         "list_research_skills",
         "read_research_skill",
         "search_stocks",
+        "get_stock_service_status",
       ].includes(name) &&
       !calls.some(
         (c) =>
@@ -257,6 +262,18 @@ export function createAssistantTools(
       throw Error(
         "查實際資料前請先用read_research_skill載入twstock-evidence，核對標的與資料時效；概念問答不需要資料工具。",
       );
+    if (name === "get_stock_service_status") {
+      const data = await client.health();
+      await record({
+        name,
+        arguments: args,
+        status: "completed",
+        category: "service",
+        data,
+        queried_at: new Date().toISOString(),
+      });
+      return data;
+    }
     if (name === "list_research_skills")
       return { skills: await skillCatalogue() };
     if (name === "read_research_skill") {
@@ -333,14 +350,30 @@ export function createAssistantTools(
         throw Error(
           "此入口僅提供最新市場快照，不可用於嚴格歷史截止推論；缺少可驗證的歷史大盤快照時請直接說明，不以最新資料替代或任意指定個股。",
         );
-      const board = await request("/api/market/board");
-      const chips = await request(
-        `/api/market/chips?date=${encodeURIComponent(context.scope.end)}`,
-      ).catch((error) => ({ available: false, note: error.message }));
+      const results = await Promise.allSettled([
+        request("/api/market/board"),
+        request(
+          `/api/market/chips?date=${encodeURIComponent(context.scope.end)}`,
+        ),
+      ]);
+      if (results.every((result) => result.status === "rejected"))
+        throw results[0].reason;
+      const [board, chips] = results.map((result) =>
+        result.status === "fulfilled"
+          ? result.value
+          : {
+              available: false,
+              error_code: result.reason.code,
+              note: result.reason.message,
+            },
+      );
       const as_of = new Date().toISOString();
       const data = {
         board,
         chips,
+        source_status: results.some((result) => result.status === "rejected")
+          ? "partial"
+          : "ready",
         as_of,
         note: "各市場商品、日夜盤與來源日期分開判讀；查詢成功不代表全部資料已更新。",
       };
@@ -536,5 +569,26 @@ export function createAssistantTools(
     }
     return selected.tools.call(name, query, personalText);
   }
-  return { call };
+  // Every failure, including catalogue/market/schema/report errors, must reach
+  // the Session audit. Inner stock calls may already have recorded a failure.
+  return {
+    call: async (name, args = {}) => {
+      try {
+        return await call(name, args);
+      } catch (error) {
+        if (!error.tool_audited)
+          await record({
+            name,
+            arguments: args,
+            status: "failed",
+            category: "error",
+            error: error.message,
+            error_code: error.code || "TOOL_ERROR",
+            queried_at: new Date().toISOString(),
+            scope: baseScope(),
+          });
+        throw error;
+      }
+    },
+  };
 }

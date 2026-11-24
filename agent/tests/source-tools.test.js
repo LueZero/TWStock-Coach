@@ -84,6 +84,7 @@ test("基本、財務、籌碼直接讀獨立API；載入中不凍結為永久�
   assert.equal(h.requests[0].query.get("section"), "basic");
   const waiting = await h.tools.call("get_stock_data", {
     section: "financial",
+    wait_ms: 0,
   });
   assert.equal(waiting.data.source_status, "updating");
   const full = await h.tools.call("get_financial_history", { metric: "eps" });
@@ -132,6 +133,7 @@ test("技術暖機、完成K與分頁不含截止後資料；可繪圖資料仍�
         trade_date: "2026-11-20",
         timestamp: "2026-11-20T05:30:00Z",
         close: 40,
+        analysis: { ma5: 39.5 },
         is_final: true,
       },
       {
@@ -153,10 +155,15 @@ test("技術暖機、完成K與分頁不含截止後資料；可繪圖資料仍�
     limit: 1,
   });
   assert.equal(first.data.bars.rows[0].close, 40);
+  assert.equal(
+    first.data.metrics.ma5,
+    39.5,
+    "沿用看盤API的暖機指標，不在工具重算",
+  );
   assert.equal(first.data.bars.total, 2);
   assert.equal(first.data.bars.has_more, true);
   assert.equal(first.data.meta.asset, "etf");
-  assert.ok(h.requests[0].query.get("start") < h.context.scope.start);
+  assert.equal(h.requests[0].query.get("start"), h.context.scope.start);
   const old = await h.tools.call("get_stock_data", {
     section: "technical",
     limit: 1,
@@ -266,7 +273,7 @@ test("歷史當時快照不以最新財務/籌碼/報價替代，來源錯誤可
     if (!count++) throw Error("暫時異常");
     return { source_status: "ready", metrics: [] };
   });
-  await assert.rejects(retry.tools.call("get_financial_history"), /異常/);
+  await assert.rejects(retry.tools.call("get_financial_history"), /連線中斷/);
   await retry.tools.call("get_financial_history");
   assert.equal(retry.requests.length, 2);
   assert.equal(retry.calls[0].status, "failed");

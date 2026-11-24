@@ -1,4 +1,5 @@
 import { stockPriceValues } from "./price-evidence.js";
+import { numberDisplayVariants } from "./number-format.js";
 import {
   monetaryAssertions,
   calculatedAmounts,
@@ -235,10 +236,8 @@ export function validateExplanation(
     orderPrices = stockPriceValues(report, [], { executable: true });
   const collect = (v) => {
     if (typeof v === "number" && Number.isFinite(v)) {
-      allowed.add(String(v));
-      allowed.add(v.toFixed(2));
-      allowed.add(String(Number(v.toFixed(4))));
-      allowed.add(v.toFixed(1));
+      for (const variant of numberDisplayVariants(v, [0, 1, 2, 4]))
+        allowed.add(variant);
       allowed.add(String(Math.round(v)));
     } else if (Array.isArray(v)) v.forEach(collect);
     else if (v && typeof v === "object")

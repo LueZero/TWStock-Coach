@@ -78,7 +78,10 @@ flowchart LR
 
 股票助手是獨立本機 Node.js 服務，不加入 Compose，也不需要模型 API Key。
 
+股票 API 仍需先啟動。Codex 訂閱登入成功只代表模型可用，不代表已連上股票資料；助手狀態會另外顯示股票 API 是否就緒。
+
 ```sh
+docker compose up -d api
 codex login
 npm run assistant:setup
 npm run assistant:start
@@ -139,7 +142,7 @@ npm run verify:assistant-tools
 
 單元測試包含來源辨識、資料單位、快取、無 DB 依賴、認證邊界、Session、計算與技術事件。API 驗證涵蓋八個個股區塊與實際策略回放；瀏覽器驗證量測區塊切換、有效資料、新聞先顯示及桌機／手機排版。`audit:data` 實際查核上市、上櫃與 ETF 樣本，將缺項、權限與來源範圍寫入 `.tmp/data-audit-latest.json`，消耗來源額度；這份診斷結果不作為看盤快取。外部來源需可用，冷載入耗時與畫面切換耗時分開評估，不保證來源服務永遠秒開。
 
-`verify:assistant-tools` 直接執行 Chat 使用的工具，對運行中的股票 API 查核各區塊，不呼叫 Codex、不建立 Session；會消耗行情來源請求。`verify:assistant` 則會使用本機 Codex 訂閱執行真實對話與 Session 驗證。
+`verify:assistant-tools` 逐一執行全部註冊工具、財務明細與籌碼子頁，對運行中的 API 查核，不呼叫 Codex、不建立使用者 Session；會消耗來源請求。結果寫入 `.tmp/assistant-tools-audit-latest.json`，分列工具錯誤、尚未載入、權限／設定限制及未覆蓋工具，不將 HTTP 成功等同資料完整。`verify:assistant` 則使用本機 Codex 訂閱執行真實對話與 Session 驗證。
 
 資料缺漏分成「查詢中、權限不足、未設定、未接入、區間外、來源空資料、計算條件不足、ETF 不適用」。上市 ETF 基本資料使用官方基金接口，公司財報不適用時不反覆查詢；配息仍保留。各區塊已知限制與實測結果見[資料覆蓋與缺漏](docs/FEATURES.md#個股看盤總覽)。
 

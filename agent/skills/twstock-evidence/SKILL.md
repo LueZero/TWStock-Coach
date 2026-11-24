@@ -18,3 +18,5 @@ description: 查詢台股、ETF或大盤的實際資料時使用，協助確認�
 回答標明正在分析的名稱／代號與重要資料日期，區分來源事實、推論與待驗證條件。遇明確資料錯誤先核對一次有關參數，仍失敗便說明限制，不以記憶補值、無限重試或把所有段落寫成尚未確認。
 
 來源工具不先載入整包報告。財務／籌碼／ETF依需要載入twstock-fundamental，回測載入twstock-backtest。基金資料用get_fund_data，估值帶用get_valuation_bands，回放用run_strategy_backtest。新聞明傳start/end且最多31日；分鐘K受來源權限限制，圖表工具只提供完成日K。updating可重查一次，仍未完成則回答已取得部分與影響，不密集輪詢。財務歷史不傳start時保留來源完整序列，明傳才篩選，不把預設半年變成所有財報資料的限制。
+
+連線錯誤先分辨股票API與上游：STOCK_API_UNREACHABLE表示平台API未啟動或位址錯誤，不等於FinMind權限不足。用get_stock_service_status診斷一次；服務未就緒則停止其他行情查詢並說明啟動或設定需求，不自行執行命令。所有工具失敗都會記錄，不以未看到來源資料推論市場沒有交易。

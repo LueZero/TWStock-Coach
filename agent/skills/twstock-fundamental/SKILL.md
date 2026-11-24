@@ -16,3 +16,5 @@ description: 分析公司財務、估值、籌碼或ETF淨值與組合時使用�
 ETF 用 get_fund_data nav、portfolio、quarterly；公司被基金持有用 holders。核對估值日、盤中指示淨值與已公布淨值，折溢價非成交保證。日組合與季報分開，只有名稱／權重不猜代號／股數；兩家投信不是全市場。沒有歷史組合不宣稱過去持股。配息率不是含息總報酬，公司 EPS 不適用 ETF。
 
 白話指出支持、反對及缺項影響的結論。財報期末不是公告日；point_in_time=false 不得推論現在查到的資料在歷史當時已知。
+
+需要損益表、股利或多指標整頁內容時，先查catalog後用get_financial_history的page指定id；單項用metric，兩者擇一。兩種查詢都有有限wait_ms，仍updating時不當成不存在。財務歷史與籌碼明細預設最近頁，頁內依日期升序；要從最早開始用order=asc。籌碼dataset可用目錄id、回傳中文名稱或對應來源資料集名，核對dataset_status，不用整體partial判定該子頁也缺資料。

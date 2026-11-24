@@ -3,6 +3,7 @@ import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { createReportStore, validateId } from "./report-store.js";
 import { codexHealth } from "./codex-adapter.js";
 import { registerChatRoutes } from "./chat-routes.js";
+import { createStockApiClient } from "./stock-api-client.js";
 
 const fail = (message, statusCode = 422) => {
   throw Object.assign(Error(message), { statusCode });
@@ -16,6 +17,10 @@ export function createAgent({
   directory = process.env.ASSISTANT_REPORT_DIR || "reports",
   accessKey = process.env.ASSISTANT_ACCESS_KEY || "",
   health = codexHealth,
+  stockHealth = () =>
+    createStockApiClient(
+      process.env.ASSISTANT_STOCK_API_URL || "http://127.0.0.1:8000",
+    ).health(),
   chatRun,
   sessionDirectory,
 } = {}) {
@@ -71,6 +76,7 @@ export function createAgent({
     } catch {}
     return {
       ...value,
+      stock_api: authenticated ? await stockHealth() : undefined,
       configured: accessKey.length >= 24,
       connected: true,
       authenticated,

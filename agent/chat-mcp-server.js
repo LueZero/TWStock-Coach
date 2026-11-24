@@ -42,7 +42,18 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
       ],
     };
   } catch (error) {
-    return { isError: true, content: [{ type: "text", text: error.message }] };
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: error.message,
+            code: error.code || "TOOL_ERROR",
+          }),
+        },
+      ],
+    };
   }
 });
 await server.connect(new StdioServerTransport());

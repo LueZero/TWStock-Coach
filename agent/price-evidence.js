@@ -1,4 +1,5 @@
 import { legalPrice } from "../api/report-conditions.js";
+import { numberDisplayVariants } from "./number-format.js";
 
 // Keep price dimensions separate from volume, ratios, IDs and personal budgets.
 export function stockPriceValues(
@@ -16,9 +17,7 @@ export function stockPriceValues(
       }
       return;
     }
-    result.add(String(v));
-    result.add(String(Number(v.toFixed(2))));
-    result.add(String(Number(v.toFixed(4))));
+    for (const value of numberDisplayVariants(v)) result.add(value);
   };
   const metrics = (data, asset) => {
     for (const [k, v] of Object.entries(data || {}))

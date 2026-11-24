@@ -1,14 +1,24 @@
 import { createHash } from "node:crypto";
-import { calculate } from "../api/indicators.js";
-import {
-  annotateTechnicalRows,
-  EVENT_VERSION,
-} from "../api/technical-events.js";
+import { EVENT_VERSION } from "../api/technical-events.js";
 import { calculateTrade } from "./trade-math.js";
 import { toolDefinitions } from "./tools.js";
 import { isEtf } from "../api/data-availability.js";
+import { createStockApiClient } from "./stock-api-client.js";
 
 const date = { type: "string", maxLength: 10 };
+const chipPages = {
+  institutions: ["法人買賣", "TaiwanStockInstitutionalInvestorsBuySell"],
+  main: ["主力代理", "TaiwanStockBrokerDailyConcentration"],
+  branches: ["券商分點", "TaiwanStockTradingDailyReport"],
+  ownership: ["大戶散戶", "TaiwanStockHoldingSharesPer"],
+  structure: ["籌碼分布與持股結構", "TaiwanStockShareholding"],
+  margin: ["融資融券", "TaiwanStockMarginPurchaseShortSale"],
+  directors: ["董監持股", "DirectorHoldingsReport"],
+  director_history: ["董監歷史", "DirectorHoldingsReport"],
+  transfers: ["申報轉讓", "InsiderTransfersReport"],
+  funds: ["指定基金持股", "TaiwanStockActiveETFHolding"],
+  fund_history: ["指定基金歷史", "TaiwanStockActiveETFHolding"],
+};
 const object = (properties, required = []) => ({
   type: "object",
   properties,
@@ -21,17 +31,49 @@ export const sourceToolDefinitions = [
     description:
       t.name === "get_stock_data"
         ? "按需直接查來源API：overview/basic基本資料、technical完成日K與指標、financial財務摘要、chips籌碼、peers同業、news區間新聞、market大盤。各區塊獨立查詢，不先載入整包報告。狀態updating需稍後重查，不能當無資料；不提供歷史當時可得快照。technical最新頁offset=0，往回分頁；其他清單往後分頁。"
-        : t.description.replace(
-            "歷史截止與來源時間沿用本次研究範圍。",
-            "來源為現在取得的歷史序列，不代表歷史當時已公布。",
-          ),
+        : t.name === "get_financial_history"
+          ? "查財務指標歷史，或依page取得財務分類中的整個細項（多指標、歷史與報表證據）。不傳metric/page先列目錄，兩者擇一。預設offset=0最近頁，頁內依日期升序，可用order=asc從最早頁查。日期是報表期間，不是當時可得快照。"
+          : t.description.replace(
+              "歷史截止與來源時間沿用本次研究範圍。",
+              "來源為現在取得的歷史序列，不代表歷史當時已公布。",
+            ),
     inputSchema: {
       ...t.inputSchema,
       properties: {
         ...t.inputSchema.properties,
         ...(t.name === "calculate_trade_profit"
           ? {}
-          : { start: date, end: date }),
+          : {
+              start: date,
+              end: date,
+              wait_ms: {
+                type: "integer",
+                minimum: 0,
+                maximum: 15000,
+                description:
+                  "等待來源漸進載入的上限毫秒，預設8000；仍在載入會保留狀態，不判成無資料。",
+              },
+            }),
+        ...(["get_financial_history", "get_chip_detail"].includes(t.name)
+          ? {
+              order: {
+                type: "string",
+                enum: ["asc", "desc"],
+                description:
+                  "預設desc先看最近頁，頁內仍按時間升序；asc從最早頁開始。",
+              },
+            }
+          : {}),
+        ...(t.name === "get_financial_history"
+          ? {
+              page: {
+                type: "string",
+                maxLength: 80,
+                description:
+                  "財務目錄的page id，例如income-statement、cash-flow-statement；以實際目錄為準。與metric擇一。",
+              },
+            }
+          : {}),
         ...(t.name === "get_stock_data"
           ? {
               section: {
@@ -121,6 +163,7 @@ export function createSourceTools(
   )
     throw Error("研究範圍不符");
   const base = new URL(context.api_url);
+  const client = createStockApiClient(context.api_url, { fetcher, signal });
   if (
     !["http:", "https:"].includes(base.protocol) ||
     base.username ||
@@ -131,34 +174,7 @@ export function createSourceTools(
     throw Error("股票API網址設定不符");
   async function request(path, body) {
     const key = path + JSON.stringify(body || null);
-    if (!cache.has(key))
-      cache.set(
-        key,
-        (async () => {
-          const response = await fetcher(new URL(path, base), {
-            method: body ? "POST" : "GET",
-            ...(body
-              ? {
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(body),
-                }
-              : {}),
-            redirect: "error",
-            signal: AbortSignal.any([
-              AbortSignal.timeout(45000),
-              ...(signal ? [signal] : []),
-            ]),
-          });
-          if (!response.ok)
-            throw Error(
-              `來源API查詢失敗（HTTP ${response.status}）；請核對區間、權限或稍後重試`,
-            );
-          const value = await response.json();
-          if (JSON.stringify(value).length > 4000000)
-            throw Error("來源回應過大，請縮小查詢範圍");
-          return value;
-        })(),
-      );
+    if (!cache.has(key)) cache.set(key, client.request(path, body));
     try {
       const value = await cache.get(key);
       if (
@@ -175,6 +191,34 @@ export function createSourceTools(
       cache.delete(key);
       throw error;
     }
+  }
+  async function ready(path, waitMs = 8000) {
+    const deadline = Date.now() + waitMs;
+    let result = await request(path);
+    while (
+      [result.state, result.source_status].includes("updating") &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve, reject) => {
+        const done = () => {
+          signal?.removeEventListener("abort", abort);
+          resolve();
+        };
+        const abort = () => {
+          clearTimeout(timer);
+          reject(
+            Object.assign(Error("股票資料查詢已取消"), {
+              code: "STOCK_API_CANCELLED",
+            }),
+          );
+        };
+        const timer = setTimeout(done, Math.min(1000, deadline - Date.now()));
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      });
+      result = await request(path);
+    }
+    return result;
   }
   const validDay = (value) =>
     /^\d{4}-\d{2}-\d{2}$/.test(value || "") &&
@@ -221,29 +265,29 @@ export function createSourceTools(
   const pathFor = (name, query) =>
     `/api/${name}/${scope.market}/${scope.symbol}?${new URLSearchParams(query)}`;
   async function technical(window) {
-    const warmup = new Date(Date.parse(window.start) - 500 * 86400000)
-      .toISOString()
-      .slice(0, 10);
     const raw = await request(
       pathFor("chart", {
         ...window,
-        start: warmup,
         resolution: "1d",
         price_basis: "raw",
       }),
     );
-    const rows = annotateTechnicalRows(
-      calculate(
-        (raw.data || []).filter(
-          (row) =>
-            row.is_final &&
-            row.trade_date <= window.end &&
-            (scope.mode !== "historical" ||
-              Date.parse(row.end_time || row.timestamp) <=
-                Date.parse(scope.as_of)),
-        ),
-      ),
-    );
+    if (!Array.isArray(raw.data))
+      throw Object.assign(Error("技術圖表API回應結構不符"), {
+        code: "STOCK_API_FORMAT",
+      });
+    // The chart API already warms indicators and annotates events. Reuse those
+    // exact values instead of fetching another 500 days and recomputing EMAs.
+    const rows = raw.data
+      .filter(
+        (row) =>
+          row.is_final &&
+          row.trade_date <= window.end &&
+          (scope.mode !== "historical" ||
+            Date.parse(row.end_time || row.timestamp) <=
+              Date.parse(scope.as_of)),
+      )
+      .map((row) => ({ ...row, ...(row.analysis || {}) }));
     return {
       raw,
       rows,
@@ -364,7 +408,7 @@ export function createSourceTools(
         ["overview", "basic"].includes(args.section)
       ) {
         endpoint = pathFor("stock-data", { section: "basic", ...window });
-        const result = await request(endpoint);
+        const result = await ready(endpoint, args.wait_ms);
         data = {
           ...result,
           data: bounded(result.data, args),
@@ -376,34 +420,111 @@ export function createSourceTools(
       ) {
         endpoint = pathFor("fundamentals", {});
         category = "financial";
-        const finance = await request(endpoint),
+        const finance = await ready(endpoint, args.wait_ms),
           metrics = finance.metrics || [];
-        if (args.metric) {
-          const metric = metrics.find((m) => (m.key || m.id) === args.metric);
-          if (!metric)
-            throw Error("找不到指標，請先查財務指標目錄；載入中請稍後重查");
-          const rows = (finance.history?.[args.metric] || []).filter(
-            (row) =>
-              (!row.period || row.period <= window.end) &&
-              (!args.start || !row.period || row.period >= window.start),
-          );
-          const selected = rows.at(-1);
+        if (args.metric && args.page) throw Error("metric與page請擇一查詢");
+        if (args.page) {
+          const selectedPage = finance.catalog?.groups
+            ?.flatMap((group) => group.pages)
+            .find((page) => page.id === args.page);
+          if (!selectedPage && finance.source_status !== "updating")
+            throw Error("找不到財務細項，請先查目錄使用page id");
+          const keys = selectedPage?.keys || [];
+          const inside = (row) =>
+            (!row.period || row.period <= window.end) &&
+            (!args.start || !row.period || row.period >= window.start);
+          const statement = selectedPage?.report
+            ? finance.statements?.[selectedPage.report]
+            : null;
           data = {
-            metric:
-              metric.period > window.end
-                ? {
-                    ...metric,
-                    period: selected?.period || null,
-                    value: selected?.value ?? null,
-                    comparison: null,
-                    assessment: null,
-                  }
-                : metric,
-            history: page(rows, args),
+            page: selectedPage || null,
+            metrics: metrics.filter(
+              (metric) => keys.includes(metric.key) && inside(metric),
+            ),
+            history: Object.fromEntries(
+              keys.map((key) => [
+                key,
+                page(
+                  (finance.history?.[key] || []).filter(inside),
+                  args,
+                  args.order !== "asc",
+                ),
+              ]),
+            ),
+            statement: statement
+              ? {
+                  ...statement,
+                  periods: (statement.periods || []).filter((period) =>
+                    inside({ period }),
+                  ),
+                  rows: page(
+                    (statement.rows || [])
+                      .filter(
+                        (row) =>
+                          inside(row) &&
+                          (!selectedPage.fields ||
+                            selectedPage.fields.includes(row.key)),
+                      )
+                      .sort((a, b) =>
+                        String(a.period).localeCompare(String(b.period)),
+                      ),
+                    args,
+                    args.order !== "asc",
+                  ),
+                }
+              : undefined,
+            dividends:
+              selectedPage?.kind === "dividends"
+                ? page(
+                    (finance.dividends || []).filter(
+                      (row) =>
+                        (!row.date || row.date <= window.end) &&
+                        (!args.start || !row.date || row.date >= window.start),
+                    ),
+                    args,
+                    args.order !== "asc",
+                  )
+                : undefined,
             coverage: finance.coverage,
             source_status: finance.source_status,
             note: finance.note,
           };
+        } else if (args.metric) {
+          const metric = metrics.find((m) => (m.key || m.id) === args.metric);
+          if (!metric && finance.source_status === "updating") {
+            data = {
+              source_status: "updating",
+              requested_metric: args.metric,
+              history: page([], args),
+              coverage: finance.coverage,
+              note: "來源仍在載入，此時尚無指標不代表不存在；可稍後重查，不重設成無資料。",
+            };
+          } else {
+            if (!metric)
+              throw Error("找不到指標，請先查財務指標目錄，使用回傳的key");
+            const rows = (finance.history?.[args.metric] || []).filter(
+              (row) =>
+                (!row.period || row.period <= window.end) &&
+                (!args.start || !row.period || row.period >= window.start),
+            );
+            const selected = rows.at(-1);
+            data = {
+              metric:
+                metric.period > window.end
+                  ? {
+                      ...metric,
+                      period: selected?.period || null,
+                      value: selected?.value ?? null,
+                      comparison: null,
+                      assessment: null,
+                    }
+                  : metric,
+              history: page(rows, args, args.order !== "asc"),
+              coverage: finance.coverage,
+              source_status: finance.source_status,
+              note: finance.note,
+            };
+          }
         } else
           data = {
             catalogue: metrics.map((m) => ({
@@ -425,16 +546,38 @@ export function createSourceTools(
       ) {
         endpoint = pathFor("equity", window);
         category = "chips";
-        const equity = await request(endpoint),
+        const equity = await ready(endpoint, args.wait_ms),
           tabs = equity.workspace?.tabs || equity.workspace || {};
         const entries = Array.isArray(tabs)
           ? tabs.map((tab) => [tab.id || tab.key, tab])
           : Object.entries(tabs);
         if (args.dataset) {
-          const entry = entries.find(([id]) => id === args.dataset);
+          const requested = Object.hasOwn(chipPages, args.dataset)
+            ? args.dataset
+            : Object.keys(chipPages).find((key) =>
+                chipPages[key].includes(args.dataset),
+              ) || args.dataset;
+          const entry = entries.find(([id]) => id === requested);
           if (!entry) throw Error("找不到籌碼子頁，請先查子頁目錄");
           data = {
-            dataset: bounded(entry[1], args),
+            dataset: Array.isArray(entry[1])
+              ? page(
+                  [...entry[1]].sort((a, b) =>
+                    String(a.date || a.period || "").localeCompare(
+                      String(b.date || b.period || ""),
+                    ),
+                  ),
+                  args,
+                  args.order !== "asc",
+                )
+              : bounded(entry[1], args),
+            dataset_id: requested,
+            dataset_status:
+              equity.coverage?.find(
+                (c) => c.dataset === chipPages[requested]?.[1],
+              )?.status || equity.source_status,
+            label: chipPages[requested]?.[0] || requested,
+            definition: equity.workspace?.definitions?.[requested],
             coverage: equity.coverage,
             source_status: equity.source_status,
             note: equity.note,
@@ -446,11 +589,15 @@ export function createSourceTools(
               .filter(([id]) => !["definitions", "prices"].includes(id))
               .map(([id, tab]) => ({
                 id,
-                label: tab.label || tab.title || id,
-                status: tab.status,
+                label: chipPages[id]?.[0] || tab.label || tab.title || id,
+                source_dataset: chipPages[id]?.[1],
+                status:
+                  equity.coverage?.find((c) => c.dataset === chipPages[id]?.[1])
+                    ?.status || tab.status,
                 rows: Array.isArray(tab) ? tab.length : undefined,
               })),
-            summary: equity.summary,
+            metrics: equity.metrics,
+            definitions: equity.workspace?.definitions,
             coverage: equity.coverage,
             source_status: equity.source_status,
             unit: "股",
@@ -558,7 +705,9 @@ export function createSourceTools(
         symbol: scope.symbol,
         queried_at,
         error: error.message,
+        error_code: error.code || "TOOL_ERROR",
       });
+      error.tool_audited = true;
       throw error;
     }
   }

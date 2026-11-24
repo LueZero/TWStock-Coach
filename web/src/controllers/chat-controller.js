@@ -364,9 +364,13 @@ async function checkService() {
     const value = await api("/status");
     authenticated = value.authenticated;
     $("assistantServiceBadge").textContent = value.ready
-      ? "● Codex 訂閱已連線"
+      ? value.stock_api?.ready === false
+        ? "● Codex 已連線 · 股票API未就緒"
+        : "● Codex 訂閱已連線"
       : "Codex 尚未就緒";
-    status(value.note);
+    status(
+      value.stock_api?.ready === false ? value.stock_api.note : value.note,
+    );
     controls();
     if (authenticated) {
       await history();

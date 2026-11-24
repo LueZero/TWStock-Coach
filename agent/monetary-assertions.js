@@ -1,3 +1,4 @@
+import { numberDisplayVariants } from "./number-format.js";
 // Interpret monetary wording without changing the report text. In particular,
 // a loss list has negative economic values even when its printed amounts are
 // unsigned: 「毛損失分別為2,380元與80元」.
@@ -21,6 +22,12 @@ export function monetaryAssertions(text) {
       ),
     ];
     const context = contexts.at(-1)?.[0] || "";
+    // Issuer earnings are source financial facts, not a personal trade P/L.
+    // Preserve the latter's calculator requirement even in mixed sentences.
+    const financialContext =
+      /每股(?:盈餘|虧損|損失)|\bEPS\b|(?:稅前|稅後|本期|歸屬母公司)(?:淨利|淨損)|營業(?:利益|損失)|公司(?:淨利|淨損)/i.test(
+        before,
+      ) && !/我的|這筆|此筆|持倉|賣出|買入|交易損益/.test(before);
     let kind = m[1] ? "price" : "amount";
     if (
       /^(?:買價|賣價|買入|賣出|買進|進場價|出場價|承接價)/.test(m[0]) ||
@@ -46,10 +53,13 @@ export function monetaryAssertions(text) {
         .replace("＋", "+"),
     );
     if (
-      ["gross", "net", "difference"].includes(kind) &&
-      /損失|虧損/.test(context)
+      (["gross", "net", "difference"].includes(kind) &&
+        /損失|虧損/.test(context)) ||
+      (financialContext &&
+        /每股(?:虧損|損失)|(?:稅前|稅後|本期|公司)淨損|營業損失/.test(before))
     )
       number = -Math.abs(number);
+    if (financialContext && !["price", "order"].includes(kind)) kind = "amount";
     // User-stated goals are assumptions; do not mistake them for earned profit.
     if (kind === "gross" && /(?:目標|希望|期望|想要).{0,8}$/.test(before))
       kind = "amount";
@@ -75,11 +85,11 @@ export function calculatedAmounts(report) {
       ["difference", "price_difference"],
     ]) {
       if (typeof data[field] === "number" && Number.isFinite(data[field])) {
-        result[kind].add(String(data[field]));
-        result[kind].add(String(Number(data[field].toFixed(2))));
+        for (const value of numberDisplayVariants(data[field], [2]))
+          result[kind].add(value);
         if (kind !== "net") {
-          result.trade_amount.add(String(data[field]));
-          result.trade_amount.add(String(Number(data[field].toFixed(2))));
+          for (const value of numberDisplayVariants(data[field], [2]))
+            result.trade_amount.add(value);
         }
       }
     }

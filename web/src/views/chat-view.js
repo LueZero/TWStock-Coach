@@ -115,6 +115,7 @@ const labels = {
   search_stocks: "股票目錄",
   get_market_data: "大盤市場",
   get_market_chart: "大盤與期貨走勢",
+  get_stock_service_status: "股票API連線診斷",
   get_fund_data: "ETF淨值與基金組合",
   get_valuation_bands: "估值參考帶",
   run_strategy_backtest: "策略回放",
@@ -148,6 +149,7 @@ export function renderSources(turn) {
   );
   for (const call of calls) {
     const sourceState =
+      call.data?.dataset_status ||
       call.data?.source_status ||
       call.data?.source_state ||
       call.data?.state ||
